@@ -1,0 +1,42 @@
+{
+  "name": "openturnly",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Open-source, self-hosted appointment booking for service businesses.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/juanpabloortizo/openturnly.git"
+  },
+  "homepage": "https://github.com/juanpabloortizo/openturnly#readme",
+  "bugs": {
+    "url": "https://github.com/juanpabloortizo/openturnly/issues"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.ts",
+    "build": "npm run build -w @openturnly/web",
+    "start": "npm run start -w @openturnly/server",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "db:generate": "npm run db:generate -w @openturnly/server"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  },
+  "allowScripts": {
+    "esbuild": true
+  }
+}

@@ -1,0 +1,41 @@
+name: Bug report
+description: Something does not work as expected.
+labels: ["type: bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to …
+        2. Click …
+        3. See …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: OpenTurnly version or commit
+      description: The owner sees it at the bottom of the sidebar, next to their role.
+      placeholder: v1.0.0 or a commit hash
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run OpenTurnly?
+      options:
+        - Docker Compose
+        - From source (npm run dev / npm start)
+        - Other
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Output of `docker compose logs openturnly`, without personal data.
+      render: text

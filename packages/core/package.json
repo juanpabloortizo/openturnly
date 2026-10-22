@@ -1,0 +1,18 @@
+{
+  "name": "@openturnly/core",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Domain rules shared by the OpenTurnly server and web app. No I/O.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "libphonenumber-js": "^1.13.15",
+    "zod": "^4.6.7"
+  }
+}

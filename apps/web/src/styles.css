@@ -1,0 +1,424 @@
+@import "tailwindcss";
+
+/* `dark:` follows the theme class OpenTurnly puts on <html>, not only the OS setting. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans:
+    "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Petrol, OpenTurnly's own colour. A business's booking page repaints these (brandStyle). */
+  --color-brand-50: #f0fdfa;
+  --color-brand-100: #ccfbf1;
+  --color-brand-200: #99f6e4;
+  --color-brand-300: #5eead4;
+  --color-brand-400: #14b8a6;
+  --color-brand-500: #0d9488;
+  --color-brand-600: #0f766e;
+  --color-brand-700: #115e59;
+  --color-brand-800: #134e4a;
+  --color-brand-900: #042f2e;
+  /* Text on top of brand-600; a business with a light brand colour switches it to dark. */
+  --color-on-brand: #fff;
+}
+
+/*
+ * Dark mode: the admin repaints itself by redefining the colour variables every utility
+ * reads (generated from Tailwind's palette; greys and petrol tuned by hand). Surfaces get
+ * darker, text lighter, and tinted badges use the deep end of each colour.
+ */
+.dark {
+  color-scheme: dark;
+  --color-white: #161619;
+  --color-on-brand: #06201d;
+  --color-zinc-50: #0e0e10;
+  --color-zinc-100: #1f1f23;
+  --color-zinc-200: #2a2a2f;
+  --color-zinc-300: #3a3a41;
+  --color-zinc-400: #6b6b75;
+  --color-zinc-500: #9b9ba5;
+  --color-zinc-600: #b5b5bd;
+  --color-zinc-700: #d0d0d6;
+  --color-zinc-800: #e2e2e7;
+  --color-zinc-900: #f2f2f5;
+  --color-zinc-950: #fafafa;
+  --color-brand-50: #0b2622;
+  --color-brand-100: #0f332e;
+  --color-brand-200: #134e4a;
+  --color-brand-300: #115e59;
+  --color-brand-400: #0f766e;
+  --color-brand-500: #0d9488;
+  --color-brand-600: #14b8a6;
+  --color-brand-700: #2dd4bf;
+  --color-brand-800: #5eead4;
+  --color-brand-900: #99f6e4;
+  --color-red-50: oklch(25.8% 0.092 26.042);
+  --color-red-100: oklch(39.6% 0.141 25.723);
+  --color-red-200: oklch(44.4% 0.177 26.899);
+  --color-red-300: oklch(50.5% 0.213 27.518);
+  --color-red-400: oklch(57.7% 0.245 27.325);
+  --color-red-500: oklch(63.7% 0.237 25.331);
+  --color-red-600: oklch(70.4% 0.191 22.216);
+  --color-red-700: oklch(80.8% 0.114 19.571);
+  --color-red-800: oklch(88.5% 0.062 18.334);
+  --color-red-900: oklch(93.6% 0.032 17.717);
+  --color-red-950: oklch(97.1% 0.013 17.38);
+  --color-amber-50: oklch(27.9% 0.077 45.635);
+  --color-amber-100: oklch(41.4% 0.112 45.904);
+  --color-amber-200: oklch(47.3% 0.137 46.201);
+  --color-amber-300: oklch(55.5% 0.163 48.998);
+  --color-amber-400: oklch(66.6% 0.179 58.318);
+  --color-amber-500: oklch(76.9% 0.188 70.08);
+  --color-amber-600: oklch(82.8% 0.189 84.429);
+  --color-amber-700: oklch(87.9% 0.169 91.605);
+  --color-amber-800: oklch(92.4% 0.12 95.746);
+  --color-amber-900: oklch(96.2% 0.059 95.617);
+  --color-amber-950: oklch(98.7% 0.022 95.277);
+  --color-emerald-50: oklch(26.2% 0.051 172.552);
+  --color-emerald-100: oklch(37.8% 0.077 168.94);
+  --color-emerald-200: oklch(43.2% 0.095 166.913);
+  --color-emerald-300: oklch(50.8% 0.118 165.612);
+  --color-emerald-400: oklch(59.6% 0.145 163.225);
+  --color-emerald-500: oklch(69.6% 0.17 162.48);
+  --color-emerald-600: oklch(76.5% 0.177 163.223);
+  --color-emerald-700: oklch(84.5% 0.143 164.978);
+  --color-emerald-800: oklch(90.5% 0.093 164.15);
+  --color-emerald-900: oklch(95% 0.052 163.051);
+  --color-emerald-950: oklch(97.9% 0.021 166.113);
+  --color-sky-50: oklch(29.3% 0.066 243.157);
+  --color-sky-100: oklch(39.1% 0.09 240.876);
+  --color-sky-200: oklch(44.3% 0.11 240.79);
+  --color-sky-300: oklch(50% 0.134 242.749);
+  --color-sky-400: oklch(58.8% 0.158 241.966);
+  --color-sky-500: oklch(68.5% 0.169 237.323);
+  --color-sky-600: oklch(74.6% 0.16 232.661);
+  --color-sky-700: oklch(82.8% 0.111 230.318);
+  --color-sky-800: oklch(90.1% 0.058 230.902);
+  --color-sky-900: oklch(95.1% 0.026 236.824);
+  --color-sky-950: oklch(97.7% 0.013 236.62);
+  --color-teal-50: oklch(27.7% 0.046 192.524);
+  --color-teal-100: oklch(38.6% 0.063 188.416);
+  --color-teal-200: oklch(43.7% 0.078 188.216);
+  --color-teal-300: oklch(51.1% 0.096 186.391);
+  --color-teal-400: oklch(60% 0.118 184.704);
+  --color-teal-500: oklch(70.4% 0.14 182.503);
+  --color-teal-600: oklch(77.7% 0.152 181.912);
+  --color-teal-700: oklch(85.5% 0.138 181.071);
+  --color-teal-800: oklch(91% 0.096 180.426);
+  --color-teal-900: oklch(95.3% 0.051 180.801);
+  --color-teal-950: oklch(98.4% 0.014 180.72);
+}
+
+html.dark body {
+  background-color: var(--color-zinc-50);
+}
+
+/* Booking page previews always show what customers see: the light page. */
+.dark .light {
+  color-scheme: light;
+  --color-white: #fff;
+  --color-on-brand: #fff;
+  --color-zinc-50: oklch(98.5% 0 none);
+  --color-zinc-100: oklch(96.7% 0.001 286.375);
+  --color-zinc-200: oklch(92% 0.004 286.32);
+  --color-zinc-300: oklch(87.1% 0.006 286.286);
+  --color-zinc-400: oklch(70.5% 0.015 286.067);
+  --color-zinc-500: oklch(55.2% 0.016 285.938);
+  --color-zinc-600: oklch(44.2% 0.017 285.786);
+  --color-zinc-700: oklch(37% 0.013 285.805);
+  --color-zinc-800: oklch(27.4% 0.006 286.033);
+  --color-zinc-900: oklch(21% 0.006 285.885);
+  --color-zinc-950: oklch(14.1% 0.005 285.823);
+  --color-brand-50: #f0fdfa;
+  --color-brand-100: #ccfbf1;
+  --color-brand-200: #99f6e4;
+  --color-brand-300: #5eead4;
+  --color-brand-400: #14b8a6;
+  --color-brand-500: #0d9488;
+  --color-brand-600: #0f766e;
+  --color-brand-700: #115e59;
+  --color-brand-800: #134e4a;
+  --color-brand-900: #042f2e;
+  --color-red-50: oklch(97.1% 0.013 17.38);
+  --color-red-100: oklch(93.6% 0.032 17.717);
+  --color-red-200: oklch(88.5% 0.062 18.334);
+  --color-red-300: oklch(80.8% 0.114 19.571);
+  --color-red-400: oklch(70.4% 0.191 22.216);
+  --color-red-500: oklch(63.7% 0.237 25.331);
+  --color-red-600: oklch(57.7% 0.245 27.325);
+  --color-red-700: oklch(50.5% 0.213 27.518);
+  --color-red-800: oklch(44.4% 0.177 26.899);
+  --color-red-900: oklch(39.6% 0.141 25.723);
+  --color-red-950: oklch(25.8% 0.092 26.042);
+  --color-amber-50: oklch(98.7% 0.022 95.277);
+  --color-amber-100: oklch(96.2% 0.059 95.617);
+  --color-amber-200: oklch(92.4% 0.12 95.746);
+  --color-amber-300: oklch(87.9% 0.169 91.605);
+  --color-amber-400: oklch(82.8% 0.189 84.429);
+  --color-amber-500: oklch(76.9% 0.188 70.08);
+  --color-amber-600: oklch(66.6% 0.179 58.318);
+  --color-amber-700: oklch(55.5% 0.163 48.998);
+  --color-amber-800: oklch(47.3% 0.137 46.201);
+  --color-amber-900: oklch(41.4% 0.112 45.904);
+  --color-amber-950: oklch(27.9% 0.077 45.635);
+  --color-emerald-50: oklch(97.9% 0.021 166.113);
+  --color-emerald-100: oklch(95% 0.052 163.051);
+  --color-emerald-200: oklch(90.5% 0.093 164.15);
+  --color-emerald-300: oklch(84.5% 0.143 164.978);
+  --color-emerald-400: oklch(76.5% 0.177 163.223);
+  --color-emerald-500: oklch(69.6% 0.17 162.48);
+  --color-emerald-600: oklch(59.6% 0.145 163.225);
+  --color-emerald-700: oklch(50.8% 0.118 165.612);
+  --color-emerald-800: oklch(43.2% 0.095 166.913);
+  --color-emerald-900: oklch(37.8% 0.077 168.94);
+  --color-emerald-950: oklch(26.2% 0.051 172.552);
+  --color-sky-50: oklch(97.7% 0.013 236.62);
+  --color-sky-100: oklch(95.1% 0.026 236.824);
+  --color-sky-200: oklch(90.1% 0.058 230.902);
+  --color-sky-300: oklch(82.8% 0.111 230.318);
+  --color-sky-400: oklch(74.6% 0.16 232.661);
+  --color-sky-500: oklch(68.5% 0.169 237.323);
+  --color-sky-600: oklch(58.8% 0.158 241.966);
+  --color-sky-700: oklch(50% 0.134 242.749);
+  --color-sky-800: oklch(44.3% 0.11 240.79);
+  --color-sky-900: oklch(39.1% 0.09 240.876);
+  --color-sky-950: oklch(29.3% 0.066 243.157);
+  --color-teal-50: oklch(98.4% 0.014 180.72);
+  --color-teal-100: oklch(95.3% 0.051 180.801);
+  --color-teal-200: oklch(91% 0.096 180.426);
+  --color-teal-300: oklch(85.5% 0.138 181.071);
+  --color-teal-400: oklch(77.7% 0.152 181.912);
+  --color-teal-500: oklch(70.4% 0.14 182.503);
+  --color-teal-600: oklch(60% 0.118 184.704);
+  --color-teal-700: oklch(51.1% 0.096 186.391);
+  --color-teal-800: oklch(43.7% 0.078 188.216);
+  --color-teal-900: oklch(38.6% 0.063 188.416);
+  --color-teal-950: oklch(27.7% 0.046 192.524);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  @apply bg-white text-zinc-900 antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+
+/* FullCalendar, softened to match the app: hairline grid, no outer border, quiet labels. */
+.openturnly-calendar {
+  --fc-border-color: var(--color-zinc-100);
+  --fc-today-bg-color: color-mix(in srgb, var(--color-brand-50) 55%, transparent);
+  --fc-now-indicator-color: var(--color-red-500);
+  --fc-non-business-color: color-mix(in srgb, var(--color-zinc-100) 45%, transparent);
+  --fc-neutral-bg-color: var(--color-zinc-50);
+  --fc-page-bg-color: var(--color-white);
+  font-size: 0.8125rem;
+}
+
+.openturnly-calendar .fc-theme-standard .fc-scrollgrid {
+  border: none;
+}
+
+.openturnly-calendar .fc-theme-standard td,
+.openturnly-calendar .fc-theme-standard th {
+  border-color: var(--color-zinc-100);
+}
+
+/* Day headers: no vertical lines, muted weekday, darker number. */
+.openturnly-calendar .fc .fc-col-header-cell {
+  border-left-color: transparent;
+  border-right-color: transparent;
+  padding: 0.5rem 0;
+}
+
+.openturnly-calendar .fc .fc-col-header-cell-cushion {
+  color: var(--color-zinc-500);
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.openturnly-calendar .fc .fc-day-today .fc-col-header-cell-cushion {
+  color: var(--color-brand-700);
+  font-weight: 600;
+}
+
+/* Hour labels: small and grey; only full hours get a line. */
+.openturnly-calendar .fc .fc-timegrid-slot-label-cushion {
+  color: var(--color-zinc-400);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  padding-right: 0.5rem;
+}
+
+/* Half-hour rows tall enough for a name and a service on two lines. */
+.openturnly-calendar .fc .fc-timegrid-slot {
+  height: 2.75rem;
+}
+
+.openturnly-calendar .fc .fc-timegrid-slot-minor {
+  border-top-color: transparent;
+}
+
+.openturnly-calendar .fc .fc-timegrid-axis,
+.openturnly-calendar .fc .fc-timegrid-slot-label {
+  border-color: transparent;
+}
+
+/* Appointments: soft tinted cards with a coloured left edge. */
+.openturnly-calendar .fc-v-event,
+.openturnly-calendar .fc-h-event {
+  border-width: 0 0 0 3px;
+  border-radius: 0.375rem;
+  box-shadow: none;
+  cursor: pointer;
+  transition: filter 120ms;
+}
+
+.openturnly-calendar .fc-v-event:hover,
+.openturnly-calendar .fc-h-event:hover {
+  filter: brightness(0.97);
+}
+
+.openturnly-calendar .fc-timegrid-event-harness-inset .fc-timegrid-event {
+  box-shadow: 0 0 0 2px var(--color-white);
+}
+
+.openturnly-calendar .fc .fc-daygrid-day-number {
+  color: var(--color-zinc-500);
+  font-size: 0.75rem;
+  padding: 0.375rem 0.5rem;
+}
+
+.openturnly-calendar .fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+  color: var(--color-brand-700);
+  font-weight: 600;
+}
+
+.openturnly-calendar .fc .fc-timegrid-now-indicator-line {
+  border-width: 1.5px 0 0;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Dialogs fade and rise in. */
+dialog[open] {
+  animation: dialog-in 160ms ease-out;
+}
+
+dialog[open]::backdrop {
+  animation: backdrop-in 160ms ease-out;
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* A confirmation takes the place of the dialog it was asked from, instead of stacking. */
+:root[data-confirming] dialog[open]:not([data-confirm-dialog]) {
+  visibility: hidden;
+}
+
+:root[data-confirming] dialog[open]:not([data-confirm-dialog])::backdrop {
+  visibility: hidden;
+}
+
+/* Guided tours: the card rises in, and a ring pulses around what it points at. */
+@keyframes tour-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+@keyframes tour-pulse {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-brand-400) 70%, transparent);
+  }
+  70%,
+  to {
+    box-shadow: 0 0 0 14px color-mix(in oklab, var(--color-brand-400) 0%, transparent);
+  }
+}
+
+/* The mark on the sign-in pages: the face draws in, the booked slot pops in, then the hands
+   tick and the slot breathes, slowly enough to stay in the background. */
+@media (prefers-reduced-motion: no-preference) {
+  .logo-animated .logo-face {
+    stroke-dasharray: 1;
+    animation: logo-draw 900ms cubic-bezier(0.65, 0, 0.35, 1) both;
+  }
+
+  .logo-animated .logo-hands {
+    transform-box: view-box;
+    transform-origin: 441px 469px;
+    animation: logo-tick 4s ease-in-out 1.2s infinite;
+  }
+
+  .logo-animated .logo-slot {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation:
+      logo-pop 500ms cubic-bezier(0.34, 1.56, 0.64, 1) 650ms both,
+      logo-breathe 4s ease-in-out 2s infinite;
+  }
+}
+
+@keyframes logo-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes logo-tick {
+  0%,
+  70%,
+  100% {
+    transform: rotate(0deg);
+  }
+  78% {
+    transform: rotate(10deg);
+  }
+  86% {
+    transform: rotate(-2deg);
+  }
+}
+
+@keyframes logo-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
+@keyframes logo-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.12);
+  }
+}

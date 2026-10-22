@@ -1,0 +1,1 @@
+ALTER TABLE "businesses" DROP COLUMN "page_background";

@@ -1,0 +1,50 @@
+# Start OpenTurnly:   docker compose up -d
+# Then open APP_URL (http://localhost:3000 by default) and create the owner account.
+# Settings can go in a .env file next to this one (see .env.example).
+name: openturnly
+
+services:
+  openturnly:
+    image: ghcr.io/juanpabloortizo/openturnly:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${OPENTURNLY_PORT:-3000}:3000"
+    environment:
+      # The public URL people use to reach OpenTurnly, e.g. https://reservas.example.com
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      DATABASE_URL: postgres://openturnly:${POSTGRES_PASSWORD:-openturnly}@db:5432/openturnly
+      # Set to "true" when a reverse proxy (Caddy, Nginx, Cloudflare Tunnel) sits in front.
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      # Set to "true" to let workflows call addresses inside your network.
+      WEBHOOKS_ALLOW_PRIVATE: ${WEBHOOKS_ALLOW_PRIVATE:-false}
+      # Signs sessions. Leave empty to generate one on first start (saved in /data).
+      SECRET: ${SECRET:-}
+    volumes:
+      # The generated session secret.
+      - openturnly-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: openturnly
+      # Only reachable by OpenTurnly inside this Compose network. Change it in .env before the
+      # first start; it is applied only when the database is created.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-openturnly}
+      POSTGRES_DB: openturnly
+    volumes:
+      # All bookings live here. Back it up (see docs/self-hosting.md).
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openturnly -d openturnly"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  openturnly-data:
+  postgres-data:

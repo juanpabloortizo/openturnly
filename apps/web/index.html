@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f766e" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>OpenTurnly</title>
+    <script>
+      // Dark theme before the first paint, on the admin and sign-in pages only (see lib/theme.ts).
+      (() => {
+        let theme = null;
+        try {
+          theme = localStorage.getItem("openturnly.theme");
+        } catch {}
+        const dark =
+          theme === "dark" ||
+          (theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark && /^\/(admin|login|setup|invite)(\/|$)/.test(location.pathname)) {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
