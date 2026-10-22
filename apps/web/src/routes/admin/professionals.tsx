@@ -1,8 +1,9 @@
-import { type ProfessionalInput, professionalSchema } from "@openturnly/core";
-import { Check, Pencil, Plus, Users } from "lucide-react";
+import { formatPrice, type ProfessionalInput, professionalSchema } from "@openturnly/core";
+import { Pencil, Plus, Users } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
+import { Checklist } from "../../components/checklist.tsx";
 import { useConfirm } from "../../components/confirm.tsx";
 import { EmptyState, Modal, PageHeader, Switch } from "../../components/controls.tsx";
 import { type Column, DataTable, IdentityCell } from "../../components/data-table.tsx";
@@ -16,7 +17,7 @@ import {
   useProfessionals,
   useServices,
 } from "../../lib/catalog.ts";
-import { cn } from "../../lib/cn.ts";
+import { formatDuration } from "../../lib/format.ts";
 import { errorMessage, type FieldErrors, fieldMessage, validate } from "../../lib/forms.ts";
 import { useBusinessContext } from "./business.tsx";
 
@@ -179,11 +180,6 @@ function ProfessionalForm({
     );
   };
 
-  const toggleService = (id: string) =>
-    setServiceIds((current) =>
-      current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
-    );
-
   return (
     <Modal
       open
@@ -248,28 +244,20 @@ function ProfessionalForm({
               </Link>
             </p>
           ) : (
-            <div className="flex flex-wrap gap-2">
-              {services.data?.map((service) => {
-                const selected = serviceIds.includes(service.id);
-                return (
-                  <button
-                    key={service.id}
-                    type="button"
-                    aria-pressed={selected}
-                    onClick={() => toggleService(service.id)}
-                    className={cn(
-                      "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[13px] font-medium transition-colors",
-                      selected
-                        ? "border-brand-200 bg-brand-50 text-brand-700"
-                        : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50",
-                    )}
-                  >
-                    {selected && <Check className="size-3.5" aria-hidden />}
-                    {service.name}
-                  </button>
-                );
-              })}
-            </div>
+            <Checklist
+              label={t("professionals.servicesLabel")}
+              value={serviceIds}
+              onChange={setServiceIds}
+              items={(services.data ?? []).map((service) => ({
+                id: service.id,
+                label: service.name,
+                detail: `${formatDuration(service.durationMin)} · ${
+                  service.priceAmount === null
+                    ? t("services.priceOnRequest")
+                    : formatPrice(service.priceAmount, business.currency)
+                }`,
+              }))}
+            />
           )}
         </fieldset>
 

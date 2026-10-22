@@ -402,6 +402,13 @@ export const es = {
     regionHint: "Define la hora de las citas, los festivos y cómo se muestran los precios.",
     submit: "Crear negocio",
   },
+  checklist: {
+    search: "Buscar…",
+    chosen: "{{count}} de {{total}} elegidos",
+    all: "Todos",
+    none: "Ninguno",
+    empty: "Nada coincide con la búsqueda.",
+  },
   tour: {
     next: "Siguiente",
     back: "Atrás",
@@ -961,6 +968,9 @@ export const es = {
     anyone: "Sin preferencia",
     anyoneHint: "Te asignamos un profesional disponible",
     noServices: "No hay servicios disponibles por ahora.",
+    chooseService: "Elige un servicio…",
+    searchServices: "Buscar un servicio…",
+    noServiceMatches: "Ningún servicio coincide con la búsqueda.",
     previousMonth: "Mes anterior",
     nextMonth: "Mes siguiente",
     noTimesMonth: "No quedan horarios disponibles este mes. Revisa el mes siguiente.",

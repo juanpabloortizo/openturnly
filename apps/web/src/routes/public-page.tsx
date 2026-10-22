@@ -23,6 +23,7 @@ import { useTranslation } from "react-i18next";
 import { useParams } from "react-router";
 import { BookingBackdrop, isDarkTheme } from "../components/booking-backdrop.tsx";
 import { BookingHeader } from "../components/booking-header.tsx";
+import { Combobox } from "../components/combobox.tsx";
 import { MonthCalendar } from "../components/month-calendar.tsx";
 import { PhoneInput } from "../components/phone-input.tsx";
 import { Alert, Button, Field, Input, Select, Spinner, Textarea } from "../components/ui.tsx";
@@ -175,6 +176,18 @@ function BookingWizard({
   const resourceId = preferredId ?? staffId;
   const professional = professionals.find((member) => member.id === resourceId);
   const service = services.find((item) => item.id === serviceId);
+  // A long menu is picked from a dropdown instead of a wall of cards.
+  const manyServices = services.length > 6;
+  /** Picks a service; a different one starts the date, time and person over. */
+  const chooseService = (id: string) => {
+    if (id !== serviceId) {
+      setDate(null);
+      setTime(null);
+      setPreferredId(null);
+      setStaffId(null);
+    }
+    setServiceId(id);
+  };
   // Who can do the chosen service.
   const team = professionals.filter((member) => serviceId && member.serviceIds.includes(serviceId));
 
@@ -365,6 +378,51 @@ function BookingWizard({
         {step === "service" &&
           (services.length === 0 ? (
             <p className="text-sm text-zinc-500">{t("booking.noServices")}</p>
+          ) : manyServices ? (
+            // A long menu is a searchable dropdown; the chosen service shows in full below.
+            <div>
+              <Combobox
+                stacked
+                value={serviceId ?? ""}
+                onChange={chooseService}
+                options={services.map((item) => ({
+                  value: item.id,
+                  label: item.name,
+                  detail: `${formatDuration(item.durationMin)} · ${price(item.priceAmount)}`,
+                  keywords: item.description ?? undefined,
+                }))}
+                placeholder={t("booking.chooseService")}
+                searchPlaceholder={t("booking.searchServices")}
+                emptyText={t("booking.noServiceMatches")}
+              />
+              {service && (
+                <div className="mt-4 rounded-2xl border border-brand-200 bg-brand-50/40 p-4 sm:p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="font-medium text-zinc-900">{service.name}</div>
+                      <div className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-xs font-medium text-zinc-600">
+                        <Clock className="size-3" aria-hidden />
+                        {formatDuration(service.durationMin)}
+                      </div>
+                    </div>
+                    <span className="shrink-0 font-semibold text-zinc-900 tabular-nums">
+                      {price(service.priceAmount)}
+                    </span>
+                  </div>
+                  {service.description && (
+                    <p className="mt-3 text-sm whitespace-pre-line text-zinc-600">
+                      {service.description}
+                    </p>
+                  )}
+                </div>
+              )}
+              <div className="mt-5 flex justify-end">
+                <Button onClick={next} disabled={!service}>
+                  {t("booking.next")}
+                  <ArrowRight className="size-4" aria-hidden />
+                </Button>
+              </div>
+            </div>
           ) : (
             <ul className="space-y-3">
               {services.map((item) => (
@@ -372,13 +430,7 @@ function BookingWizard({
                   <button
                     type="button"
                     onClick={() => {
-                      if (item.id !== serviceId) {
-                        setDate(null);
-                        setTime(null);
-                        setPreferredId(null);
-                        setStaffId(null);
-                      }
-                      setServiceId(item.id);
+                      chooseService(item.id);
                       next();
                     }}
                     className={cn(

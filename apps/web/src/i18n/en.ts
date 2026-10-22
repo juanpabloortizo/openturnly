@@ -406,6 +406,13 @@ export const en: Messages<typeof es> = {
     regionHint: "Sets appointment times, public holidays and how prices are shown.",
     submit: "Create business",
   },
+  checklist: {
+    search: "Search…",
+    chosen: "{{count}} of {{total}} chosen",
+    all: "All",
+    none: "None",
+    empty: "Nothing matches the search.",
+  },
   tour: {
     next: "Next",
     back: "Back",
@@ -963,6 +970,9 @@ export const en: Messages<typeof es> = {
     anyone: "No preference",
     anyoneHint: "We'll book an available staff member",
     noServices: "No services available right now.",
+    chooseService: "Choose a service…",
+    searchServices: "Search for a service…",
+    noServiceMatches: "No service matches the search.",
     previousMonth: "Previous month",
     nextMonth: "Next month",
     noTimesMonth: "No times left this month. Check next month.",

@@ -115,6 +115,7 @@ export function Combobox({
   emptyText,
   placeholder,
   disabled,
+  stacked,
   "aria-invalid": invalid,
   "aria-describedby": describedBy,
 }: {
@@ -127,6 +128,8 @@ export function Combobox({
   /** Shown while nothing is picked. */
   placeholder?: string;
   disabled?: boolean;
+  /** Each option on two lines, the detail under the label: for long labels on phones. */
+  stacked?: boolean;
   "aria-invalid"?: boolean;
   "aria-describedby"?: string;
 }) {
@@ -258,15 +261,25 @@ export function Combobox({
                 // Keys are handled by the search box, which keeps the focus.
                 onKeyDown={() => {}}
                 className={cn(
-                  "flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm",
+                  "flex cursor-pointer items-center gap-2 px-3 text-sm",
+                  stacked ? "py-2" : "py-1.5",
                   index === active && "bg-zinc-100",
                   option.value === value ? "text-brand-700" : "text-zinc-800",
                 )}
               >
-                <span className="min-w-0 flex-1 truncate">
-                  {option.label}
-                  {option.detail && <span className="ml-2 text-zinc-400">{option.detail}</span>}
-                </span>
+                {stacked ? (
+                  <span className="min-w-0 flex-1">
+                    <span className="block">{option.label}</span>
+                    {option.detail && (
+                      <span className="block text-xs text-zinc-400">{option.detail}</span>
+                    )}
+                  </span>
+                ) : (
+                  <span className="min-w-0 flex-1 truncate">
+                    {option.label}
+                    {option.detail && <span className="ml-2 text-zinc-400">{option.detail}</span>}
+                  </span>
+                )}
                 {option.value === value && <Check className="size-4 shrink-0" aria-hidden />}
               </div>
             ))}
