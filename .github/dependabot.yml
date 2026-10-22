@@ -7,10 +7,19 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # FullCalendar 7 is a rewrite (its views move into the core package and its styling
+      # changes), so moving the agenda to it is a change of its own, not a version bump.
+      - dependency-name: "@fullcalendar/*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    # One pull request for all the workflow actions, instead of one each.
+    groups:
+      actions:
+        patterns: ["*"]
   - package-ecosystem: docker
     directory: /
     schedule:
