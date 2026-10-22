@@ -22,6 +22,11 @@ All notable changes to OpenTurnly are documented here. The format follows
 - **Staff services**: choosing which services a professional does is a checklist with a
   count, all/none shortcuts and, for long menus, a search, instead of a pile of buttons.
 
+### Security
+
+- **Development tools**: the old esbuild that drizzle-kit pulled in (a moderate advisory for
+  its dev server) is replaced with a patched one. It was never part of the Docker image.
+
 ## [1.0.0] - 2026-10-22
 
 The first public release, under the MIT license.

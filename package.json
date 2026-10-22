@@ -38,5 +38,10 @@
   },
   "allowScripts": {
     "esbuild": true
+  },
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "^0.28.2"
+    }
   }
 }
