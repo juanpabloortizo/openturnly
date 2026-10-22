@@ -58,7 +58,7 @@ type Catalog = {
 /**
  * The business's tools for one access key. Agent keys get what a receptionist talking to
  * customers needs; admin keys get the same with the business's own powers, plus managing
- * customers, catalog, hours and a summary.
+ * customers, catalog, hours, the business's details and a summary.
  */
 export function registerTools(server: McpServer, ctx: ToolContext) {
   const { business, key, db, call } = ctx;

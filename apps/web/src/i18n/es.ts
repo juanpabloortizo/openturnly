@@ -54,7 +54,7 @@ export const es = {
       agent:
         "Para bots que atienden clientes: informa, busca horarios y agenda. Para mover o cancelar pide el código de reserva y el celular. No ve la lista de clientes.",
       admin:
-        "Para tu propio asistente: además maneja la agenda, clientes, servicios, profesionales, horarios y un resumen de ingresos.",
+        "Para tu propio asistente: además maneja la agenda, clientes, servicios, profesionales, horarios, los datos del negocio y un resumen de ingresos.",
     },
     keyName: "Nombre",
     keyNameHint: "Para saber quién la usa. Aparece en las citas que agende.",

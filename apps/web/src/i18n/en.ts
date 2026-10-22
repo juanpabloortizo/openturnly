@@ -58,7 +58,7 @@ export const en: Messages<typeof es> = {
       agent:
         "For bots that serve customers: answers questions, finds times and books. To move or cancel it asks for the booking code and phone. It can't see the customer list.",
       admin:
-        "For your own assistant: it also runs the calendar, customers, services, team, hours and an income summary.",
+        "For your own assistant: it also runs the calendar, customers, services, team, hours, the business's details and an income summary.",
     },
     keyName: "Name",
     keyNameHint: "So you know who uses it. It shows on the appointments it books.",

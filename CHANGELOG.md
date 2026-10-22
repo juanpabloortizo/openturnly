@@ -6,6 +6,12 @@ All notable changes to OpenTurnly are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **AI agents (MCP)**: administration keys can update the business's name, description,
+  phone, email and address with the new `update_business_details` tool, so an assistant can
+  set up a business's booking page end to end.
+
 ## [1.0.0] - 2026-10-22
 
 The first public release, under the MIT license.
