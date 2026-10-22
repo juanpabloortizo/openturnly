@@ -6,6 +6,8 @@ All notable changes to OpenTurnly are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-22
+
 ### Added
 
 - **AI agents (MCP)**: administration keys can update the business's name, description,
@@ -88,5 +90,6 @@ The first public release, under the MIT license.
   own pages, and "My account" waits 15 minutes after 5 wrong current passwords. See
   [SECURITY.md](SECURITY.md) for everything that's built in.
 
-[Unreleased]: https://github.com/juanpabloortizo/openturnly/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/juanpabloortizo/openturnly/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/juanpabloortizo/openturnly/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/juanpabloortizo/openturnly/releases/tag/v1.0.0

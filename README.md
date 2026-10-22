@@ -26,6 +26,22 @@ features than they need. OpenTurnly aims to be the free, simple alternative that
 - **Ready for AI agents**: each business has its own MCP server, so a WhatsApp bot or an
   assistant like Claude can answer questions, find free times and book.
 
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/booking-page.png" alt="A business's booking page, listing its services with length and price"></td>
+    <td width="50%"><img src="docs/screenshots/booking-time.png" alt="Choosing a day and a free time on the booking page"></td>
+  </tr>
+  <tr>
+    <td align="center">The booking page</td>
+    <td align="center">Picking a day and a time</td>
+  </tr>
+</table>
+
+<img src="docs/screenshots/agenda.png" alt="The admin calendar, a week of appointments by staff member">
+<p align="center">The calendar, where the business sees and manages its appointments</p>
+
 ## How it works
 
 1. You install OpenTurnly and create the **owner account** on the first visit.
