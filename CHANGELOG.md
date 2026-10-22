@@ -6,6 +6,20 @@ All notable changes to OpenTurnly are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **AI agents (MCP)**: administration keys can update the business's name, description,
+  phone, email and address with the new `update_business_details` tool, so an assistant can
+  set up a business's booking page end to end.
+
+### Changed
+
+- **Long service menus**: when a business offers more than six services, its booking page
+  picks them from a searchable dropdown (with each one's length and price) and shows the
+  chosen one in full, instead of a long wall of cards.
+- **Staff services**: choosing which services a professional does is a checklist with a
+  count, all/none shortcuts and, for long menus, a search, instead of a pile of buttons.
+
 ## [1.0.0] - 2026-10-22
 
 The first public release, under the MIT license.

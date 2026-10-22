@@ -51,7 +51,10 @@ type CustomerRow = {
   nextVisit?: string | null;
 };
 
-/** What only an admin key can do: run the calendar, customers, catalog and hours. */
+/**
+ * What only an admin key can do: run the calendar, customers, catalog and hours, and keep the
+ * business's details up to date.
+ */
 export function registerAdminTools(tool: Tool, ctx: ToolContext) {
   const { business, call, db } = ctx;
   const base = `/api/businesses/${business.id}`;
@@ -539,6 +542,49 @@ export function registerAdminTools(tool: Tool, ctx: ToolContext) {
     async (args) => {
       await call("PUT", `${base}/holidays/${args.date}`, { closed: !args.open });
       return { date: args.date, open: args.open };
+    },
+  );
+
+  tool(
+    "update_business_details",
+    {
+      title: "Business details",
+      description:
+        "Changes what customers see about the business on its booking page: its name, a short description, and the phone, email and address to reach or find it. Send only what changes; an empty text clears it. The booking link, time zone and currency are changed in the panel.",
+      input: z.object({
+        name: z.string().optional(),
+        description: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().optional(),
+        address: z.string().optional(),
+      }),
+    },
+    async (args) => {
+      const changes = validateWith(
+        businessUpdateSchema.pick({
+          name: true,
+          description: true,
+          phone: true,
+          email: true,
+          address: true,
+        }),
+        args,
+      );
+      if (Object.keys(changes).length === 0) throw new ToolError("nothing_to_change");
+      const [updated] = await db
+        .update(businesses)
+        .set(changes)
+        .where(eq(businesses.id, business.id))
+        .returning();
+      if (!updated) throw new ToolError("business_not_found");
+      return {
+        saved: true,
+        name: updated.name,
+        description: updated.description,
+        phone: updated.phone,
+        email: updated.email,
+        address: updated.address,
+      };
     },
   );
 

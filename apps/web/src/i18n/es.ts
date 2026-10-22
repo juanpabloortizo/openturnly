@@ -54,7 +54,7 @@ export const es = {
       agent:
         "Para bots que atienden clientes: informa, busca horarios y agenda. Para mover o cancelar pide el código de reserva y el celular. No ve la lista de clientes.",
       admin:
-        "Para tu propio asistente: además maneja la agenda, clientes, servicios, profesionales, horarios y un resumen de ingresos.",
+        "Para tu propio asistente: además maneja la agenda, clientes, servicios, profesionales, horarios, los datos del negocio y un resumen de ingresos.",
     },
     keyName: "Nombre",
     keyNameHint: "Para saber quién la usa. Aparece en las citas que agende.",
@@ -401,6 +401,13 @@ export const es = {
     regionTitle: "Región",
     regionHint: "Define la hora de las citas, los festivos y cómo se muestran los precios.",
     submit: "Crear negocio",
+  },
+  checklist: {
+    search: "Buscar…",
+    chosen: "{{count}} de {{total}} elegidos",
+    all: "Todos",
+    none: "Ninguno",
+    empty: "Nada coincide con la búsqueda.",
   },
   tour: {
     next: "Siguiente",
@@ -961,6 +968,9 @@ export const es = {
     anyone: "Sin preferencia",
     anyoneHint: "Te asignamos un profesional disponible",
     noServices: "No hay servicios disponibles por ahora.",
+    chooseService: "Elige un servicio…",
+    searchServices: "Buscar un servicio…",
+    noServiceMatches: "Ningún servicio coincide con la búsqueda.",
     previousMonth: "Mes anterior",
     nextMonth: "Mes siguiente",
     noTimesMonth: "No quedan horarios disponibles este mes. Revisa el mes siguiente.",

@@ -58,7 +58,7 @@ export const en: Messages<typeof es> = {
       agent:
         "For bots that serve customers: answers questions, finds times and books. To move or cancel it asks for the booking code and phone. It can't see the customer list.",
       admin:
-        "For your own assistant: it also runs the calendar, customers, services, team, hours and an income summary.",
+        "For your own assistant: it also runs the calendar, customers, services, team, hours, the business's details and an income summary.",
     },
     keyName: "Name",
     keyNameHint: "So you know who uses it. It shows on the appointments it books.",
@@ -405,6 +405,13 @@ export const en: Messages<typeof es> = {
     regionTitle: "Region",
     regionHint: "Sets appointment times, public holidays and how prices are shown.",
     submit: "Create business",
+  },
+  checklist: {
+    search: "Search…",
+    chosen: "{{count}} of {{total}} chosen",
+    all: "All",
+    none: "None",
+    empty: "Nothing matches the search.",
   },
   tour: {
     next: "Next",
@@ -963,6 +970,9 @@ export const en: Messages<typeof es> = {
     anyone: "No preference",
     anyoneHint: "We'll book an available staff member",
     noServices: "No services available right now.",
+    chooseService: "Choose a service…",
+    searchServices: "Search for a service…",
+    noServiceMatches: "No service matches the search.",
     previousMonth: "Previous month",
     nextMonth: "Next month",
     noTimesMonth: "No times left this month. Check next month.",

@@ -51,6 +51,7 @@ business's currency, in its main unit.
 | `create_service`, `update_service`, `create_professional`, `update_professional` | | ✓ |
 | `get_opening_hours`, `set_opening_hours` | | ✓ |
 | `list_closures`, `add_closure`, `remove_closure`, `list_holidays`, `set_holiday` | | ✓ |
+| `update_business_details`: name, description, phone, email, address | | ✓ |
 | `update_booking_rules` | | ✓ |
 
 How close to an appointment customers can still move or cancel it is set in **Opening

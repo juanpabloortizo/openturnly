@@ -317,6 +317,34 @@ describe("MCP server", () => {
       await run(admin, "update_booking_rules", { customers_can_change_until_minutes_before: 60 }),
     ).toMatchObject({ saved: true, customers_can_change_until_minutes_before: 60 });
 
+    // The business's own details, as its booking page shows them.
+    expect(
+      await run(admin, "update_business_details", {
+        description: "  Cortes clásicos y barba.  ",
+        phone: "604 444 1234",
+        email: "Hola@FTE.example",
+        address: "Calle 10 # 43-12, Medellín",
+      }),
+    ).toMatchObject({
+      saved: true,
+      name: "FTE Barber Studio",
+      description: "Cortes clásicos y barba.",
+      email: "hola@fte.example",
+      address: "Calle 10 # 43-12, Medellín",
+    });
+    expect(await run(admin, "get_business_info")).toMatchObject({
+      phone: "604 444 1234",
+      description: "Cortes clásicos y barba.",
+    });
+    // An empty text clears it; a bad email is refused; nothing at all is an error.
+    expect(await run(admin, "update_business_details", { phone: "" })).toMatchObject({
+      phone: null,
+    });
+    expect(
+      (await run(admin, "update_business_details", { email: "no-es-correo" })).error,
+    ).toBeTruthy();
+    expect((await run(admin, "update_business_details", {})).error).toBeTruthy();
+
     const summary = await run(admin, "get_summary", { date: saturday, until_date: saturday });
     expect(summary).toMatchObject({ appointments: 1, cancelled: 0, income: { price: 25_000 } });
 

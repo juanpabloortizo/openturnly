@@ -73,6 +73,8 @@ const EXPLANATIONS: Record<string, string> = {
   invalid_range: "Invalid dates: use YYYY-MM-DD, the end not before the start, at most 62 days.",
   invalid_date: "Invalid date: use YYYY-MM-DD.",
   validation_failed: "Some values are missing or invalid (see the fields).",
+  nothing_to_change: "Nothing to change: send at least one of the fields.",
+  business_not_found: "This business no longer exists.",
   forbidden: "This access key isn't allowed to do that.",
 };
 
