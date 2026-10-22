@@ -6,6 +6,8 @@ All notable changes to OpenTurnly are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-22
+
 ### Added
 
 - **AI agents (MCP)**: administration keys can update the business's name, description,
@@ -19,6 +21,11 @@ All notable changes to OpenTurnly are documented here. The format follows
   chosen one in full, instead of a long wall of cards.
 - **Staff services**: choosing which services a professional does is a checklist with a
   count, all/none shortcuts and, for long menus, a search, instead of a pile of buttons.
+
+### Security
+
+- **Development tools**: the old esbuild that drizzle-kit pulled in (a moderate advisory for
+  its dev server) is replaced with a patched one. It was never part of the Docker image.
 
 ## [1.0.0] - 2026-10-22
 
@@ -88,5 +95,6 @@ The first public release, under the MIT license.
   own pages, and "My account" waits 15 minutes after 5 wrong current passwords. See
   [SECURITY.md](SECURITY.md) for everything that's built in.
 
-[Unreleased]: https://github.com/juanpabloortizo/openturnly/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/juanpabloortizo/openturnly/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/juanpabloortizo/openturnly/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/juanpabloortizo/openturnly/releases/tag/v1.0.0
