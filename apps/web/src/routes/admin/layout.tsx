@@ -7,6 +7,7 @@ import {
   ChevronsUpDown,
   Clock3,
   Contact,
+  Gift,
   MapPin,
   Menu,
   Plus,
@@ -170,6 +171,12 @@ function SidebarContent({ user, collapsed }: { user: User; collapsed: boolean })
                 label: t("nav.sales"),
                 icon: Receipt,
                 tour: "sales",
+              },
+              {
+                to: `${base}/gift-cards`,
+                label: t("nav.giftCards"),
+                icon: Gift,
+                tour: "gift-cards",
               },
               {
                 to: `${base}/customers`,

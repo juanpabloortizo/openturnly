@@ -6,6 +6,7 @@ import {
   type BookingForm,
   BUSINESS_ROLES,
   DEFAULT_BOOKING_FORM,
+  GIFT_CARD_KINDS,
   PAGE_THEMES,
   PAYMENT_METHODS,
   SALE_ITEM_KINDS,
@@ -488,6 +489,11 @@ export const appointments = pgTable(
     serviceName: text("service_name").notNull(),
     resourceName: text("resource_name"),
     priceAmount: bigint("price_amount", { mode: "number" }),
+    /** Taken off the price by a discount code at booking (`giftCardId`). */
+    discountAmount: bigint("discount_amount", { mode: "number" }).notNull().default(0),
+    giftCardId: text("gift_card_id").references((): AnyPgColumn => giftCards.id, {
+      onDelete: "set null",
+    }),
     /** Answers to the business's extra questions, with each question as it was asked. */
     answers: jsonb("answers").$type<BookingAnswer[]>().notNull().default([]),
     /** Booking page, the business itself, or an AI agent through MCP (see source_label). */
@@ -533,6 +539,10 @@ export const sales = pgTable(
     customerId: text("customer_id").references(() => customers.id, { onDelete: "set null" }),
     /** Sold to the team or used by the business itself ("ventas internas"). */
     internal: boolean("internal").notNull().default(false),
+    /** A discount code used at the counter. */
+    giftCardId: text("gift_card_id").references((): AnyPgColumn => giftCards.id, {
+      onDelete: "set null",
+    }),
     /** Sum of the lines, after each line's discount. */
     subtotal: bigint("subtotal", { mode: "number" }).notNull(),
     /** Discount on the whole sale. */
@@ -567,6 +577,10 @@ export const saleItems = pgTable(
       onDelete: "set null",
     }),
     serviceId: text("service_id").references(() => services.id, { onDelete: "set null" }),
+    /** For a gift card sold: the card. */
+    giftCardId: text("gift_card_id").references((): AnyPgColumn => giftCards.id, {
+      onDelete: "set null",
+    }),
     name: text("name").notNull(),
     /** Who did it, for commissions. */
     resourceId: text("resource_id").references(() => resources.id, { onDelete: "set null" }),
@@ -613,8 +627,45 @@ export const salePayments = pgTable(
     depositId: text("deposit_id").references((): AnyPgColumn => deposits.id, {
       onDelete: "set null",
     }),
+    /** For "gift_card": the card whose balance paid. */
+    giftCardId: text("gift_card_id").references((): AnyPgColumn => giftCards.id, {
+      onDelete: "set null",
+    }),
   },
   (table) => [index("sale_payments_sale_idx").on(table.saleId)],
+);
+
+/**
+ * Discount codes and gift cards with a balance. Uses and balance aren't stored: they come
+ * from the appointments and sales that used the card, so voiding or cancelling gives them
+ * back on its own.
+ */
+export const giftCards = pgTable(
+  "gift_cards",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    /** What people type, upper case; unique within the business. */
+    code: text("code").notNull(),
+    kind: text("kind", { enum: GIFT_CARD_KINDS }).notNull(),
+    /** Discount codes: a percentage off… */
+    percent: integer("percent"),
+    /** …or a fixed amount off. Gift cards: the money on the card. */
+    amount: bigint("amount", { mode: "number" }),
+    maxUses: integer("max_uses"),
+    validFrom: date("valid_from", { mode: "string" }),
+    validUntil: date("valid_until", { mode: "string" }),
+    /** Who it was sold or given to. */
+    customerId: text("customer_id").references(() => customers.id, { onDelete: "set null" }),
+    note: text("note"),
+    active: boolean("active").notNull().default(true),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [uniqueIndex("gift_cards_business_code_idx").on(table.businessId, table.code)],
 );
 
 export const DEPOSIT_STATUSES = ["active", "void"] as const;
@@ -756,5 +807,6 @@ export type Appointment = typeof appointments.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type Sale = typeof sales.$inferSelect;
 export type Deposit = typeof deposits.$inferSelect;
+export type GiftCard = typeof giftCards.$inferSelect;
 export type Automation = typeof automations.$inferSelect;
 export type AutomationDelivery = typeof automationDeliveries.$inferSelect;

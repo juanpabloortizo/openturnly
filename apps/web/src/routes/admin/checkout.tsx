@@ -23,6 +23,7 @@ import {
 import { cn } from "../../lib/cn.ts";
 import { formatDay } from "../../lib/format.ts";
 import { errorMessage } from "../../lib/forms.ts";
+import { lookupGiftCard } from "../../lib/gift-cards.ts";
 import { useDepositMutations, useDeposits, useSaleMutations } from "../../lib/sales.ts";
 import { useBusinessContext } from "./business.tsx";
 
@@ -35,8 +36,17 @@ type Line = {
   resourceId: string | null;
   quantity: number;
   unitPrice: number;
+  /** An appointment's discount from the code used to book it. */
+  discountAmount: number;
 };
-type Payment = { key: string; method: PaymentMethod; amount: number };
+type Payment = {
+  key: string;
+  method: PaymentMethod | "gift_card";
+  amount: number;
+  /** For a gift card: which one, its code and what it had left. */
+  giftCard?: { id: string; code: string; remaining: number };
+};
+type DiscountCode = { id: string; code: string; percent: number | null; amount: number | null };
 type Tip = { key: string; resourceId: string; amount: number };
 
 const newKey = () => crypto.randomUUID();
@@ -84,11 +94,16 @@ export function CheckoutModal({
             resourceId: appointment.resourceId,
             quantity: 1,
             unitPrice: appointment.priceAmount ?? 0,
+            discountAmount: appointment.discountAmount,
           },
         ]
       : [],
   );
   const [discount, setDiscount] = useState(0);
+  // A discount code applied here, which keeps the discount in step with the subtotal.
+  const [discountCode, setDiscountCode] = useState<DiscountCode | null>(null);
+  const [code, setCode] = useState("");
+  const [checking, setChecking] = useState(false);
   const [tips, setTips] = useState<Tip[]>([]);
   const [payments, setPayments] = useState<Payment[]>([
     { key: newKey(), method: "cash", amount: 0 },
@@ -123,7 +138,18 @@ export function CheckoutModal({
     (professional) => !location || location.resourceIds.includes(professional.id),
   );
 
-  const subtotal = lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
+  const subtotal = lines.reduce(
+    (sum, line) => sum + Math.max(0, line.quantity * line.unitPrice - line.discountAmount),
+    0,
+  );
+  useEffect(() => {
+    if (!discountCode) return;
+    setDiscount(
+      discountCode.percent !== null
+        ? Math.round((subtotal * discountCode.percent) / 100)
+        : Math.min(discountCode.amount ?? 0, subtotal),
+    );
+  }, [discountCode, subtotal]);
   const total = Math.max(0, subtotal - discount);
   const tipTotal = tips.reduce((sum, tip) => sum + tip.amount, 0);
   const due = total + tipTotal;
@@ -156,9 +182,51 @@ export function CheckoutModal({
         resourceId: appointment?.resourceId ?? null,
         quantity: 1,
         unitPrice: service.priceAmount ?? 0,
+        discountAmount: 0,
       },
     ]);
   };
+  /** A code typed at the counter: a discount code, or a gift card paying with its balance. */
+  const applyCode = async () => {
+    if (!code.trim()) return;
+    setChecking(true);
+    try {
+      const card = await lookupGiftCard(business.id, code);
+      if (card.state !== "active") {
+        toast.error(t("checkout.codeState", { state: t(`giftCards.states.${card.state}`) }));
+        return;
+      }
+      if (card.kind === "discount") {
+        setDiscountCode({
+          id: card.id,
+          code: card.code,
+          percent: card.percent,
+          amount: card.amount,
+        });
+      } else if (!payments.some((payment) => payment.giftCard?.id === card.id)) {
+        const amount = Math.min(card.remaining ?? 0, remaining);
+        setPaymentsEdited(true);
+        setPayments((current) => [
+          {
+            key: newKey(),
+            method: "gift_card",
+            amount,
+            giftCard: { id: card.id, code: card.code, remaining: card.remaining ?? 0 },
+          },
+          // The rest is left to what was there.
+          ...(current.length === 1 && current[0]
+            ? [{ ...current[0], amount: Math.max(0, remaining - amount) }]
+            : current),
+        ]);
+      }
+      setCode("");
+    } catch (error) {
+      toast.error(errorMessage(t, error));
+    } finally {
+      setChecking(false);
+    }
+  };
+
   const editPayment = (key: string, change: Partial<Payment>) => {
     if (change.amount !== undefined) setPaymentsEdited(true);
     setPayments((current) =>
@@ -183,6 +251,7 @@ export function CheckoutModal({
       locationId: location?.id,
       customerId: customer?.id ?? null,
       internal,
+      ...(discountCode ? { giftCardId: discountCode.id } : {}),
       items: lines.map((line) => ({
         kind: "service",
         serviceId: line.serviceId,
@@ -190,6 +259,7 @@ export function CheckoutModal({
         resourceId: line.resourceId,
         quantity: line.quantity,
         unitPrice: line.unitPrice,
+        discountAmount: line.discountAmount,
       })),
       discountAmount: discount,
       tips: tips.filter((tip) => tip.amount > 0),
@@ -203,7 +273,11 @@ export function CheckoutModal({
           })),
         ...payments
           .filter((payment) => payment.amount > 0)
-          .map(({ method, amount }) => ({ method, amount })),
+          .map(({ method, amount, giftCard }) => ({
+            method,
+            amount,
+            ...(giftCard ? { giftCardId: giftCard.id } : {}),
+          })),
       ],
       note,
     };
@@ -299,6 +373,14 @@ export function CheckoutModal({
                       {line.appointmentId ? (
                         <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-900">
                           {line.name}
+                          {line.discountAmount > 0 && (
+                            <span className="ml-2 font-normal text-brand-700">
+                              {t("checkout.bookedDiscount", {
+                                code: appointment?.giftCode ?? "",
+                                amount: money(line.discountAmount),
+                              })}
+                            </span>
+                          )}
                         </span>
                       ) : (
                         <Select
@@ -475,13 +557,37 @@ export function CheckoutModal({
               <dd className="text-zinc-900 tabular-nums">{money(subtotal)}</dd>
             </div>
             <div className="flex items-center justify-between gap-3">
-              <dt className="text-zinc-500">{t("checkout.discount")}</dt>
+              <dt className="text-zinc-500">
+                {discountCode ? (
+                  <span className="inline-flex items-center gap-1">
+                    {t("checkout.discount")}
+                    <span className="rounded bg-brand-50 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-brand-700">
+                      {discountCode.code}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={t("checkout.removeCode")}
+                      title={t("checkout.removeCode")}
+                      className="text-zinc-400 hover:text-zinc-700"
+                      onClick={() => {
+                        setDiscountCode(null);
+                        setDiscount(0);
+                      }}
+                    >
+                      <X className="size-3.5" aria-hidden />
+                    </button>
+                  </span>
+                ) : (
+                  t("checkout.discount")
+                )}
+              </dt>
               <dd className="w-32">
                 <MoneyInput
                   aria-label={t("checkout.discount")}
                   currency={currency}
                   value={discount}
                   invalid={discount > subtotal}
+                  disabled={discountCode !== null}
                   onChange={setDiscount}
                 />
               </dd>
@@ -497,6 +603,25 @@ export function CheckoutModal({
               <dd className="text-zinc-900 tabular-nums">{money(due)}</dd>
             </div>
           </dl>
+
+          <div className="flex gap-2">
+            <Input
+              aria-label={t("checkout.code")}
+              placeholder={t("checkout.code")}
+              className="font-mono uppercase"
+              value={code}
+              onChange={(event) => setCode(event.target.value.toUpperCase())}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  applyCode();
+                }
+              }}
+            />
+            <Button variant="secondary" onClick={applyCode} loading={checking}>
+              {t("checkout.apply")}
+            </Button>
+          </div>
 
           <section className="space-y-2">
             <h3 className="text-sm font-medium text-zinc-800">{t("checkout.payments")}</h3>
@@ -535,19 +660,30 @@ export function CheckoutModal({
             <ul className="space-y-2">
               {payments.map((payment) => (
                 <li key={payment.key} className="grid grid-cols-[minmax(0,1fr)_8rem_2rem] gap-2">
-                  <Select
-                    aria-label={t("checkout.method")}
-                    value={payment.method}
-                    onChange={(event) =>
-                      editPayment(payment.key, { method: event.target.value as PaymentMethod })
-                    }
-                  >
-                    {PAYMENT_METHODS.map((method) => (
-                      <option key={method} value={method}>
-                        {t(`payments.${method}`)}
-                      </option>
-                    ))}
-                  </Select>
+                  {payment.giftCard ? (
+                    <span className="flex min-w-0 flex-col justify-center rounded-md bg-brand-50/60 px-2.5 text-[13px]">
+                      <span className="truncate font-medium text-zinc-800">
+                        {t("payments.gift_card")} · {payment.giftCard.code}
+                      </span>
+                      <span className="text-[11px] text-zinc-500 tabular-nums">
+                        {t("checkout.cardLeft", { amount: money(payment.giftCard.remaining) })}
+                      </span>
+                    </span>
+                  ) : (
+                    <Select
+                      aria-label={t("checkout.method")}
+                      value={payment.method}
+                      onChange={(event) =>
+                        editPayment(payment.key, { method: event.target.value as PaymentMethod })
+                      }
+                    >
+                      {PAYMENT_METHODS.map((method) => (
+                        <option key={method} value={method}>
+                          {t(`payments.${method}`)}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
                   <MoneyInput
                     aria-label={t("checkout.amount")}
                     currency={currency}

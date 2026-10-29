@@ -23,6 +23,11 @@ All notable changes to OpenTurnly are documented here. The format follows
   apart. OpenTurnly records how customers paid; it still doesn't take payments itself.
 - **Deposits**: record money a customer leaves in advance, for an appointment or a later
   visit. The calendar shows it, checkout uses it, and it can be returned while unused.
+- **Gift cards**: discount codes (a percentage or an amount off, with optional dates and a
+  limit of uses) that customers type on the booking page ("Have a discount code?") or that
+  are applied at the counter, and gift cards with a balance that the business sells (recorded
+  as a sale) or gives away, then spends as a payment at checkout. Uses and balances follow
+  the appointments and sales that used them: cancelling or voiding gives them back.
 - **AI agents (MCP)**: `location_id` for finding times, booking, moving appointments, hours
   and closures; `get_business_info` lists each location with its hours.
 - **Workflows**: `appointment.location` and `appointment.location_address` data.

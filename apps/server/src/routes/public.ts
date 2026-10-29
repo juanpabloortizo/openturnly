@@ -11,6 +11,7 @@ import {
 } from "@openturnly/core";
 import { and, asc, count, eq, gt, inArray, lt, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
+import { z } from "zod";
 import {
   appointments,
   type Business,
@@ -25,6 +26,7 @@ import { bearerToken, findApiKey } from "../lib/api-keys.ts";
 import { clientIp, networkKey } from "../lib/client-ip.ts";
 import { newBookingCode } from "../lib/codes.ts";
 import { matchCustomer, saveBookingCustomer } from "../lib/customers.ts";
+import { discountFor, usableGiftCard } from "../lib/gift-cards.ts";
 import { businessCountry } from "../lib/holidays.ts";
 import { type AppEnv, apiError, type Deps, parseBody, validateWith } from "../lib/http.ts";
 import { findImage, imageUrls } from "../lib/images.ts";
@@ -35,6 +37,8 @@ import { bookingRules, loadSchedules, pickLeastBusy } from "../lib/schedules.ts"
 const MAX_AVAILABILITY_DAYS = 62;
 /** Upcoming bookings one customer can hold at the same business. */
 const MAX_ACTIVE_BOOKINGS_PER_CUSTOMER = 3;
+
+const giftCheckSchema = z.object({ code: z.string().min(1).max(40), serviceId: z.string().min(1) });
 
 /** Endpoints used by the public booking page. No login required. */
 export function publicRoutes({ db, config, guard, automations }: Deps) {
@@ -210,6 +214,28 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
        * A puzzle to solve before booking, harder while the business gets an unusual
        * number of bookings (see lib/booking-guard.ts).
        */
+      /**
+       * Whether a discount code works for a service, and how much it takes off. Limited like
+       * the availability lookups, so codes can't be guessed by trying many.
+       */
+      .post("/businesses/:slug/gift-code", async (c) => {
+        const business = await findBusiness(c.req.param("slug"));
+        if (!(await agentKey(c, business)) && !guard.allow.availability(network(c))) {
+          throw apiError(429, "too_many_requests");
+        }
+        const input = await parseBody(c, giftCheckSchema);
+        const service = await findActiveService(business, input.serviceId);
+        const card = await usableGiftCard(db, business, { code: input.code }, "discount");
+        const price = service.priceAmount ?? 0;
+        return c.json({
+          code: card.code,
+          percent: card.percent,
+          amount: card.amount,
+          priceAmount: price,
+          discountAmount: discountFor(card, price),
+        });
+      })
+
       .get("/businesses/:slug/challenge", async (c) => {
         if (!guard.allow.challenge(network(c))) throw apiError(429, "too_many_requests");
         const business = await findBusiness(c.req.param("slug"));
@@ -361,6 +387,11 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
                 .where(eq(resources.id, resourceId))
             : [];
 
+          // Checked in the booking queue, so a code's last use goes to one booking only.
+          const gift = input.giftCode?.trim()
+            ? await usableGiftCard(tx, business, { code: input.giftCode }, "discount")
+            : null;
+
           const customerId = await saveBookingCustomer(tx, business.id, match, details);
 
           const [created] = await tx
@@ -377,6 +408,8 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
               serviceName: service.name,
               resourceName: resource?.name ?? null,
               priceAmount: service.priceAmount,
+              discountAmount: gift ? discountFor(gift, service.priceAmount ?? 0) : 0,
+              giftCardId: gift?.id ?? null,
               answers,
               source: key ? "agent" : "online",
               sourceLabel: key?.name ?? null,
@@ -400,6 +433,7 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
               serviceName: appointment.serviceName,
               resourceName: appointment.resourceName,
               priceAmount: appointment.priceAmount,
+              discountAmount: appointment.discountAmount,
               currency: business.currency,
               location: { name: location.name, address: location.address },
             },

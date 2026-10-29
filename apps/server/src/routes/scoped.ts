@@ -7,6 +7,7 @@ import { appointmentRoutes } from "./appointments.ts";
 import { automationRoutes } from "./automations.ts";
 import { customerRoutes } from "./customers.ts";
 import { depositRoutes } from "./deposits.ts";
+import { giftCardRoutes } from "./gift-cards.ts";
 import { hoursRoutes } from "./hours.ts";
 import { imageRoutes } from "./images.ts";
 import { locationRoutes } from "./locations.ts";
@@ -66,6 +67,7 @@ export function businessScopedRoutes(deps: Deps) {
     .route("/customers", customerRoutes(deps))
     .route("/sales", saleRoutes(deps))
     .route("/deposits", depositRoutes(deps))
+    .route("/gift-cards", giftCardRoutes(deps))
     .route("/images", imageRoutes(deps))
     .route("/api-keys", apiKeyRoutes(deps))
     .route("/automations", automationRoutes(deps))

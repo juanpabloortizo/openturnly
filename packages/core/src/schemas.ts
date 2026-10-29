@@ -577,6 +577,8 @@ export const bookingSchema = z.object({
     email: z.string().nullish(),
   }),
   answers: z.record(z.string(), z.string()).nullish(),
+  /** A discount code the customer typed. */
+  giftCode: z.string().max(40).optional(),
   /** Honeypot: hidden from people, filled in by bots. Must stay empty. */
   website: z.string().max(0).optional(),
   /** Solved anti-bot puzzle (ALTCHA payload, base64 JSON), one per booking. */
@@ -1023,9 +1025,9 @@ export type PasswordChangeInput = z.input<typeof passwordChangeSchema>;
 export const PAYMENT_METHODS = ["cash", "card", "transfer", "other"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 /** Plus what a sale can be paid with besides money: a deposit left before. */
-export const SALE_PAYMENT_METHODS = [...PAYMENT_METHODS, "deposit"] as const;
+export const SALE_PAYMENT_METHODS = [...PAYMENT_METHODS, "deposit", "gift_card"] as const;
 export type SalePaymentMethod = (typeof SALE_PAYMENT_METHODS)[number];
-export const SALE_ITEM_KINDS = ["service"] as const;
+export const SALE_ITEM_KINDS = ["service", "gift_card"] as const;
 export type SaleItemKind = (typeof SALE_ITEM_KINDS)[number];
 
 /** An amount in minor currency units. */
@@ -1055,6 +1057,8 @@ export const salePaymentSchema = z.object({
   amount: money,
   /** For "deposit": which one. */
   depositId: z.string().min(1).optional(),
+  /** For "gift_card": the card whose balance pays. */
+  giftCardId: z.string().min(1).optional(),
 });
 
 /**
@@ -1066,6 +1070,8 @@ export const saleSchema = z.object({
   locationId: z.string().min(1).optional(),
   customerId: z.string().min(1).nullable().default(null),
   internal: z.boolean().default(false),
+  /** A discount code used at the counter: counts as one of its uses. */
+  giftCardId: z.string().min(1).optional(),
   items: z.array(saleItemSchema).min(1).max(100),
   discountAmount: money.default(0),
   tips: z
@@ -1087,6 +1093,71 @@ export const depositSchema = z.object({
   note: optionalText(300),
 });
 export type DepositInput = z.input<typeof depositSchema>;
+
+// --- Gift cards -------------------------------------------------------------
+
+/**
+ * "discount": a code that takes a percentage or an amount off, on the booking page or at
+ * the counter. "balance": a card sold (or given) with money on it, spent as a payment.
+ */
+export const GIFT_CARD_KINDS = ["discount", "balance"] as const;
+export type GiftCardKind = (typeof GIFT_CARD_KINDS)[number];
+
+/** "VERANO20", "GC-7K2M": letters, numbers and dashes; typed in any case. */
+export const giftCodeSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z0-9][A-Z0-9-]{2,23}$/, "invalid_code");
+
+const giftCardCommon = {
+  code: giftCodeSchema,
+  /** First and last day it works, in the business's time zone; null: no limit. */
+  validFrom: calendarDate.nullable().default(null),
+  validUntil: calendarDate.nullable().default(null),
+  customerId: z.string().min(1).nullable().default(null),
+  note: optionalText(300),
+};
+
+export const giftCardSchema = z
+  .discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("discount"),
+      ...giftCardCommon,
+      /** A percentage off, or else a fixed amount off (`amount`). */
+      percent: z.number().int().min(1).max(100).nullable().default(null),
+      amount: money.min(1).nullable().default(null),
+      /** How many times it can be used in all; null: no limit. */
+      maxUses: z.number().int().min(1).max(100_000).nullable().default(null),
+    }),
+    z.object({
+      kind: z.literal("balance"),
+      ...giftCardCommon,
+      amount: money.min(1),
+      /** How it was paid for, recorded as a sale; null when it's given away. */
+      paidWith: z.enum(PAYMENT_METHODS).nullable().default(null),
+      locationId: z.string().min(1).optional(),
+    }),
+  ])
+  .refine((card) => card.kind === "balance" || (card.percent === null) !== (card.amount === null), {
+    message: "percent_or_amount",
+    path: ["percent"],
+  })
+  .refine((card) => !card.validFrom || !card.validUntil || card.validFrom <= card.validUntil, {
+    message: "end_before_start",
+    path: ["validUntil"],
+  });
+export type GiftCardInput = z.input<typeof giftCardSchema>;
+
+export const giftCardPatchSchema = z
+  .object({
+    active: z.boolean(),
+    validFrom: calendarDate.nullable(),
+    validUntil: calendarDate.nullable(),
+    maxUses: z.number().int().min(1).max(100_000).nullable(),
+    note: optionalText(300),
+  })
+  .partial();
 
 export const TOURS = [
   "welcome",

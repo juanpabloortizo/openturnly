@@ -98,6 +98,8 @@ updates, read the [self-hosting guide](docs/self-hosting.md), or follow the
   and Excel/CSV export.
 - **Sales and checkout**: charge appointments or sell at the counter, with discounts, tips
   per professional, split payments and deposits; void and export sales.
+- **Gift cards**: discount codes for the booking page and the counter, and gift cards with a
+  balance to sell or give away.
 - **Customers** with their history, notes and duplicate merging.
 - **Locations**: one business, several branches, each with its own address, hours,
   services and team. Staff can work at several locations and are never booked at two at

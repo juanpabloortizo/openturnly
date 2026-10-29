@@ -120,6 +120,13 @@
       "when": 1793314040344,
       "tag": "0016_sales",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793314835068,
+      "tag": "0017_gift_cards",
+      "breakpoints": true
     }
   ]
 }
