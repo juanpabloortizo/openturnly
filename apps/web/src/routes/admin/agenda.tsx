@@ -13,6 +13,7 @@ import {
 } from "@openturnly/core";
 import {
   ArrowUpRight,
+  Banknote,
   CalendarClock,
   CheckCircle2,
   ChevronLeft,
@@ -36,7 +37,16 @@ import {
 } from "../../components/date-range-picker.tsx";
 import { RangeCalendar } from "../../components/range-calendar.tsx";
 import { toast } from "../../components/toast.tsx";
-import { Alert, Button, buttonClass, Card, Field, Select, Spinner } from "../../components/ui.tsx";
+import {
+  Alert,
+  Badge,
+  Button,
+  buttonClass,
+  Card,
+  Field,
+  Select,
+  Spinner,
+} from "../../components/ui.tsx";
 import type { Appointment, WeeklyRange } from "../../lib/api.ts";
 import { useProtection } from "../../lib/businesses.ts";
 import {
@@ -51,9 +61,12 @@ import {
 } from "../../lib/catalog.ts";
 import { cn } from "../../lib/cn.ts";
 import { errorMessage } from "../../lib/forms.ts";
+import { useSale } from "../../lib/sales.ts";
 import { AppointmentsList, bookedVia } from "./appointments-list.tsx";
 import { publicUrl, useBusinessContext } from "./business.tsx";
+import { CheckoutModal, DepositModal } from "./checkout.tsx";
 import { NewAppointmentForm } from "./new-appointment.tsx";
+import { SaleDetails } from "./sales.tsx";
 
 /** One per professional on the calendar, starting with OpenTurnly's petrol. */
 const COLORS = ["#0f766e", "#0284c7", "#d97706", "#db2777", "#65a30d", "#7c3aed", "#475569"];
@@ -499,6 +512,8 @@ function AppointmentDetails({
   const confirm = useConfirm();
   const cancel = useCancelAppointment(business.id);
   const [editing, setEditing] = useState(false);
+  // Charging it, leaving a deposit, or looking at the sale that charged it.
+  const [payment, setPayment] = useState<"charge" | "deposit" | "sale" | null>(null);
   const isProfessional = business.access.role === "professional";
   const severalLocations = (useLocations(business.id).data?.length ?? 0) > 1;
   const start = instantToZoned(Date.parse(appointment.startsAt), business.timezone);
@@ -557,6 +572,12 @@ function AppointmentDetails({
       <RescheduleForm appointment={appointment} onBack={() => setEditing(false)} onDone={onClose} />
     );
   }
+  // One dialog at a time: these take the details' place.
+  if (payment === "charge") return <CheckoutModal appointment={appointment} onClose={onClose} />;
+  if (payment === "deposit") return <DepositModal appointment={appointment} onClose={onClose} />;
+  if (payment === "sale" && appointment.sale) {
+    return <SaleById saleId={appointment.sale.id} onClose={onClose} />;
+  }
 
   return (
     <Modal
@@ -612,6 +633,45 @@ function AppointmentDetails({
           </div>
         ))}
       </dl>
+      {!isProfessional && !cancelled && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 px-4 py-3">
+          {appointment.sale ? (
+            <>
+              <span className="flex items-center gap-2 text-sm">
+                <Badge tone="success">{t("checkout.paid")}</Badge>
+                <span className="text-zinc-600">
+                  {t("checkout.paidIn", { number: appointment.sale.number })}
+                </span>
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => setPayment("sale")}>
+                {t("checkout.viewSale")}
+              </Button>
+            </>
+          ) : (
+            <>
+              <div className="text-sm">
+                <div className="font-medium text-zinc-900">{t("checkout.unpaid")}</div>
+                {appointment.depositAmount > 0 && (
+                  <div className="text-[13px] text-zinc-500">
+                    {t("checkout.depositLeft", {
+                      amount: formatPrice(appointment.depositAmount, business.currency),
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button variant="secondary" size="sm" onClick={() => setPayment("deposit")}>
+                  {t("deposits.new")}
+                </Button>
+                <Button size="sm" onClick={() => setPayment("charge")}>
+                  <Banknote className="size-4" aria-hidden />
+                  {t("checkout.chargeShort")}
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
         {customer.phone && (
           <a
@@ -854,4 +914,12 @@ function RescheduleForm({
       </div>
     </Modal>
   );
+}
+
+/** A sale opened from the calendar, loaded by its id. */
+function SaleById({ saleId, onClose }: { saleId: string; onClose: () => void }) {
+  const { business } = useBusinessContext();
+  const sale = useSale(business.id, saleId);
+  if (!sale.data) return null;
+  return <SaleDetails sale={sale.data} onClose={onClose} />;
 }

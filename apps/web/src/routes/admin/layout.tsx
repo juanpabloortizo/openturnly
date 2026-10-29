@@ -10,6 +10,7 @@ import {
   MapPin,
   Menu,
   Plus,
+  Receipt,
   Scissors,
   Settings,
   TriangleAlert,
@@ -164,6 +165,12 @@ function SidebarContent({ user, collapsed }: { user: User; collapsed: boolean })
         { to: base, label: t("nav.agenda"), icon: CalendarDays, end: true, tour: "agenda" },
         ...(manages
           ? [
+              {
+                to: `${base}/sales`,
+                label: t("nav.sales"),
+                icon: Receipt,
+                tour: "sales",
+              },
               {
                 to: `${base}/customers`,
                 label: t("nav.customers"),

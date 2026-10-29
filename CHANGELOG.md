@@ -15,6 +15,14 @@ All notable changes to OpenTurnly are documented here. The format follows
   you like your appointment?", and a link with `?local=<id>` goes straight to one. The
   calendar filters by location and appointments can move between them. Existing businesses
   get one location with their current hours, services, team and appointments.
+- **Sales and checkout**: charge an appointment from the calendar ("Charge") or make a sale
+  at the counter, with extra services, a discount, tips for each professional and payment
+  split across cash, card, transfer or other. Sales are numbered (#1, #2…), can be voided
+  (they stay in the history) and are listed in **Sales** with filters by period and location
+  and Excel/CSV export. Internal sales (for the team or the business's own use) are marked
+  apart. OpenTurnly records how customers paid; it still doesn't take payments itself.
+- **Deposits**: record money a customer leaves in advance, for an appointment or a later
+  visit. The calendar shows it, checkout uses it, and it can be returned while unused.
 - **AI agents (MCP)**: `location_id` for finding times, booking, moving appointments, hours
   and closures; `get_business_info` lists each location with its hours.
 - **Workflows**: `appointment.location` and `appointment.location_address` data.

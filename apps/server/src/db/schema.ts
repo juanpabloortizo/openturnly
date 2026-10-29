@@ -7,6 +7,9 @@ import {
   BUSINESS_ROLES,
   DEFAULT_BOOKING_FORM,
   PAGE_THEMES,
+  PAYMENT_METHODS,
+  SALE_ITEM_KINDS,
+  SALE_PAYMENT_METHODS,
 } from "@openturnly/core";
 import {
   type AnyPgColumn,
@@ -504,6 +507,153 @@ export const appointments = pgTable(
   ],
 );
 
+// ---------------------------------------------------------------------------
+// Sales: what was charged, how it was paid and who got the tips
+// ---------------------------------------------------------------------------
+
+export const SALE_STATUSES = ["paid", "void"] as const;
+
+/**
+ * A sale at the counter: appointments charged, products sold… OpenTurnly records how the
+ * customer paid; it doesn't take payments itself. Amounts are in minor currency units.
+ * A void sale stays in the history but counts nowhere.
+ */
+export const sales = pgTable(
+  "sales",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    /** Locations with sales can't be deleted, only made inactive. */
+    locationId: text("location_id").references(() => locations.id, { onDelete: "set null" }),
+    /** 1, 2, 3… per business, for receipts and for finding a sale. */
+    number: integer("number").notNull(),
+    /** Walk-in product sales may have no customer. */
+    customerId: text("customer_id").references(() => customers.id, { onDelete: "set null" }),
+    /** Sold to the team or used by the business itself ("ventas internas"). */
+    internal: boolean("internal").notNull().default(false),
+    /** Sum of the lines, after each line's discount. */
+    subtotal: bigint("subtotal", { mode: "number" }).notNull(),
+    /** Discount on the whole sale. */
+    discountAmount: bigint("discount_amount", { mode: "number" }).notNull().default(0),
+    /** What the customer owes for the sale: subtotal minus discount. Tips come on top. */
+    total: bigint("total", { mode: "number" }).notNull(),
+    tipAmount: bigint("tip_amount", { mode: "number" }).notNull().default(0),
+    note: text("note"),
+    status: text("status", { enum: SALE_STATUSES }).notNull().default("paid"),
+    soldBy: text("sold_by").references(() => users.id, { onDelete: "set null" }),
+    voidedAt: instant("voided_at"),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("sales_business_number_idx").on(table.businessId, table.number),
+    index("sales_business_created_idx").on(table.businessId, table.createdAt),
+    index("sales_customer_idx").on(table.customerId),
+  ],
+);
+
+/** The lines of a sale, with names and prices copied so history stays right. */
+export const saleItems = pgTable(
+  "sale_items",
+  {
+    id: id(),
+    saleId: text("sale_id")
+      .notNull()
+      .references(() => sales.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: SALE_ITEM_KINDS }).notNull(),
+    /** The appointment charged on this line, if any. */
+    appointmentId: text("appointment_id").references(() => appointments.id, {
+      onDelete: "set null",
+    }),
+    serviceId: text("service_id").references(() => services.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    /** Who did it, for commissions. */
+    resourceId: text("resource_id").references(() => resources.id, { onDelete: "set null" }),
+    resourceName: text("resource_name"),
+    quantity: integer("quantity").notNull().default(1),
+    unitPrice: bigint("unit_price", { mode: "number" }).notNull(),
+    discountAmount: bigint("discount_amount", { mode: "number" }).notNull().default(0),
+    /** quantity × unit price − discount. */
+    total: bigint("total", { mode: "number" }).notNull(),
+    position: integer("position").notNull().default(0),
+  },
+  (table) => [
+    index("sale_items_sale_idx").on(table.saleId),
+    index("sale_items_appointment_idx").on(table.appointmentId),
+  ],
+);
+
+/** Tips left with a sale, for each professional. */
+export const saleTips = pgTable(
+  "sale_tips",
+  {
+    id: id(),
+    saleId: text("sale_id")
+      .notNull()
+      .references(() => sales.id, { onDelete: "cascade" }),
+    resourceId: text("resource_id").references(() => resources.id, { onDelete: "set null" }),
+    resourceName: text("resource_name").notNull(),
+    amount: bigint("amount", { mode: "number" }).notNull(),
+  },
+  (table) => [index("sale_tips_sale_idx").on(table.saleId)],
+);
+
+/** How a sale was paid: one row per method, adding up to its total plus tips. */
+export const salePayments = pgTable(
+  "sale_payments",
+  {
+    id: id(),
+    saleId: text("sale_id")
+      .notNull()
+      .references(() => sales.id, { onDelete: "cascade" }),
+    method: text("method", { enum: SALE_PAYMENT_METHODS }).notNull(),
+    amount: bigint("amount", { mode: "number" }).notNull(),
+    /** For "deposit": the deposit used. */
+    depositId: text("deposit_id").references((): AnyPgColumn => deposits.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => [index("sale_payments_sale_idx").on(table.saleId)],
+);
+
+export const DEPOSIT_STATUSES = ["active", "void"] as const;
+
+/**
+ * Money a customer leaves in advance ("abonos"), usually for an appointment. It counts as
+ * cash flow when received and is used up as a payment when the appointment is charged.
+ */
+export const deposits = pgTable(
+  "deposits",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    locationId: text("location_id").references(() => locations.id, { onDelete: "set null" }),
+    customerId: text("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    appointmentId: text("appointment_id").references(() => appointments.id, {
+      onDelete: "set null",
+    }),
+    amount: bigint("amount", { mode: "number" }).notNull(),
+    method: text("method", { enum: PAYMENT_METHODS }).notNull(),
+    note: text("note"),
+    status: text("status", { enum: DEPOSIT_STATUSES }).notNull().default("active"),
+    /** The sale it paid for, once used. */
+    appliedSaleId: text("applied_sale_id").references(() => sales.id, { onDelete: "set null" }),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    voidedAt: instant("voided_at"),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index("deposits_business_created_idx").on(table.businessId, table.createdAt),
+    index("deposits_customer_idx").on(table.customerId),
+    index("deposits_appointment_idx").on(table.appointmentId),
+  ],
+);
+
 /**
  * Keys that let an AI agent use a business through its MCP server (/<slug>/mcp). Only a
  * SHA-256 hash of each key is stored; the key itself is shown once, when created.
@@ -604,5 +754,7 @@ export type Resource = typeof resources.$inferSelect;
 export type Customer = typeof customers.$inferSelect;
 export type Appointment = typeof appointments.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
+export type Sale = typeof sales.$inferSelect;
+export type Deposit = typeof deposits.$inferSelect;
 export type Automation = typeof automations.$inferSelect;
 export type AutomationDelivery = typeof automationDeliveries.$inferSelect;

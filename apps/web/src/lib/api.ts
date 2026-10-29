@@ -5,6 +5,9 @@ import type {
   BookingAnswer,
   BookingForm,
   PageTheme,
+  PaymentMethod,
+  SaleItemKind,
+  SalePaymentMethod,
 } from "@openturnly/core";
 
 /** Error returned by the OpenTurnly API or by Better Auth, normalized to a lowercase code. */
@@ -160,6 +163,10 @@ export type Appointment = {
   createdAt: string;
   cancelledAt: string | null;
   answers: BookingAnswer[];
+  /** The sale that charged it, if it was charged. */
+  sale: { id: string; number: number } | null;
+  /** Deposits left for it and not used yet. */
+  depositAmount: number;
   customer: {
     id: string;
     firstName: string;
@@ -221,6 +228,64 @@ export type BookedAppointment = {
   priceAmount: number | null;
   currency: string;
   location: { name: string; address: string | null };
+};
+
+export type Sale = {
+  id: string;
+  /** 1, 2, 3… per business. */
+  number: number;
+  status: "paid" | "void";
+  internal: boolean;
+  locationId: string | null;
+  locationName: string | null;
+  subtotal: number;
+  discountAmount: number;
+  total: number;
+  tipAmount: number;
+  note: string | null;
+  createdAt: string;
+  voidedAt: string | null;
+  soldByName: string | null;
+  customer: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    phone: string | null;
+    email: string | null;
+  } | null;
+  items: {
+    id: string;
+    kind: SaleItemKind;
+    appointmentId: string | null;
+    serviceId: string | null;
+    name: string;
+    resourceId: string | null;
+    resourceName: string | null;
+    quantity: number;
+    unitPrice: number;
+    discountAmount: number;
+    total: number;
+  }[];
+  tips: { id: string; resourceId: string | null; resourceName: string; amount: number }[];
+  payments: { id: string; method: SalePaymentMethod; amount: number; depositId: string | null }[];
+};
+
+/** Money a customer left in advance ("abono"). */
+export type Deposit = {
+  id: string;
+  amount: number;
+  method: PaymentMethod;
+  note: string | null;
+  status: "active" | "void";
+  createdAt: string;
+  voidedAt: string | null;
+  appointmentId: string | null;
+  appointmentCode: string | null;
+  locationId: string | null;
+  locationName: string | null;
+  /** The sale it paid for, once used. */
+  appliedSale: { id: string; number: number } | null;
+  customer: { id: string; firstName: string; lastName: string };
 };
 
 /** A row of the customer list. */

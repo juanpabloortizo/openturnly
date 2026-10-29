@@ -113,6 +113,13 @@
       "when": 1793312727666,
       "tag": "0015_locations",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793314040344,
+      "tag": "0016_sales",
+      "breakpoints": true
     }
   ]
 }

@@ -6,13 +6,14 @@ import {
   staffBookingSchema,
   zonedTimeToInstant,
 } from "@openturnly/core";
-import { and, asc, eq, gt, lt, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
   appointments,
   type Business,
   customers,
+  deposits,
   locations,
   resources,
   services,
@@ -23,6 +24,7 @@ import { newBookingCode } from "../lib/codes.ts";
 import { matchCustomer, saveBookingCustomer } from "../lib/customers.ts";
 import { apiError, type BusinessEnv, type Deps, parseBody } from "../lib/http.ts";
 import { resolveLocation } from "../lib/locations.ts";
+import { chargedAppointments } from "../lib/sales.ts";
 import { loadSchedules, pickLeastBusy } from "../lib/schedules.ts";
 
 const rangeQuery = z.object({
@@ -177,7 +179,31 @@ export function appointmentRoutes({ db, automations }: Deps) {
             ),
           )
           .orderBy(asc(appointments.startsAt));
-        return c.json({ appointments: rows });
+        // Whether each one was charged, and the deposits waiting to pay for it.
+        const ids = rows.map((row) => row.id);
+        const charged = await chargedAppointments(db, ids);
+        const waiting =
+          ids.length > 0 && access.role !== "professional"
+            ? await db
+                .select({ appointmentId: deposits.appointmentId, amount: deposits.amount })
+                .from(deposits)
+                .where(
+                  and(
+                    inArray(deposits.appointmentId, ids),
+                    eq(deposits.status, "active"),
+                    isNull(deposits.appliedSaleId),
+                  ),
+                )
+            : [];
+        return c.json({
+          appointments: rows.map((row) => ({
+            ...row,
+            sale: charged.get(row.id) ?? null,
+            depositAmount: waiting
+              .filter((deposit) => deposit.appointmentId === row.id)
+              .reduce((sum, deposit) => sum + deposit.amount, 0),
+          })),
+        });
       })
 
       /** Times a new appointment could take on `date`, and who is free at each. */
