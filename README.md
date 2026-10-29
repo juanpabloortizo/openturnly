@@ -96,6 +96,8 @@ updates, read the [self-hosting guide](docs/self-hosting.md), or follow the
   Spanish or English. Customers book without an account and get a booking code.
 - **Calendar** with day, week, month and list views, booking and moving appointments,
   and Excel/CSV export.
+- **Sales and checkout**: charge appointments or sell at the counter, with discounts, tips
+  per professional, split payments and deposits; void and export sales.
 - **Customers** with their history, notes and duplicate merging.
 - **Locations**: one business, several branches, each with its own address, hours,
   services and team. Staff can work at several locations and are never booked at two at

@@ -6,6 +6,7 @@ import {
   locationServices,
   locations,
   resourceLocations,
+  sales,
   weeklyHours,
 } from "../db/schema.ts";
 import { apiError, type BusinessEnv, type Deps, parseBody } from "../lib/http.ts";
@@ -125,12 +126,17 @@ export function locationRoutes({ db }: Deps) {
       const businessId = c.get("business").id;
       const location = await findLocation(businessId, c.req.param("locationId"));
       if (location.active) await assertAnotherActive(businessId, location.id);
-      // Its appointments are part of the history and the reports: keep the location, inactive.
-      const [used] = await db
+      // Its appointments and sales are part of the history and the reports: keep the
+      // location, inactive.
+      const [booked] = await db
         .select({ total: count() })
         .from(appointments)
         .where(eq(appointments.locationId, location.id));
-      if ((used?.total ?? 0) > 0) throw apiError(409, "location_in_use");
+      const [sold] = await db
+        .select({ total: count() })
+        .from(sales)
+        .where(eq(sales.locationId, location.id));
+      if ((booked?.total ?? 0) + (sold?.total ?? 0) > 0) throw apiError(409, "location_in_use");
       await db.delete(locations).where(eq(locations.id, location.id));
       return c.body(null, 204);
     });

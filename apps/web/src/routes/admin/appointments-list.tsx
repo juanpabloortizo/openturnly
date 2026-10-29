@@ -322,7 +322,7 @@ export function AppointmentsList({
   );
 }
 
-function ExportMenu({
+export function ExportMenu({
   disabled,
   onExcel,
   onCsv,

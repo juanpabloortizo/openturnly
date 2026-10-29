@@ -2,7 +2,7 @@ import { customerAdminSchema, customerPatchSchema } from "@openturnly/core";
 import { and, asc, desc, eq, ilike, ne, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { appointments, customers } from "../db/schema.ts";
+import { appointments, customers, deposits, sales } from "../db/schema.ts";
 import { apiError, type BusinessEnv, type Deps, parseBody } from "../lib/http.ts";
 
 /**
@@ -161,6 +161,14 @@ export function customerRoutes({ db }: Deps) {
             .update(appointments)
             .set({ customerId: target.id })
             .where(eq(appointments.customerId, source.id));
+          await tx
+            .update(sales)
+            .set({ customerId: target.id })
+            .where(eq(sales.customerId, source.id));
+          await tx
+            .update(deposits)
+            .set({ customerId: target.id })
+            .where(eq(deposits.customerId, source.id));
           await tx.delete(customers).where(eq(customers.id, source.id));
           const notes = [target.notes, source.notes].filter(Boolean).join("\n\n") || null;
           const [merged] = await tx

@@ -12,4 +12,5 @@ export { AdminLayout } from "./layout.tsx";
 export { LocationsPage } from "./locations.tsx";
 export { NewBusinessPage } from "./new-business.tsx";
 export { ProfessionalsPage } from "./professionals.tsx";
+export { SalesPage } from "./sales.tsx";
 export { ServicesPage } from "./services.tsx";

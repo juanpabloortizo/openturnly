@@ -1017,6 +1017,77 @@ export type PasswordChangeInput = z.input<typeof passwordChangeSchema>;
  * The guided tours of the admin: "welcome" walks through every section the first time, and
  * each section has a short one for the first visit. Each is shown once per person.
  */
+// --- Sales ----------------------------------------------------------------
+
+/** How customers pay at the counter. OpenTurnly records it; it doesn't take payments. */
+export const PAYMENT_METHODS = ["cash", "card", "transfer", "other"] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+/** Plus what a sale can be paid with besides money: a deposit left before. */
+export const SALE_PAYMENT_METHODS = [...PAYMENT_METHODS, "deposit"] as const;
+export type SalePaymentMethod = (typeof SALE_PAYMENT_METHODS)[number];
+export const SALE_ITEM_KINDS = ["service"] as const;
+export type SaleItemKind = (typeof SALE_ITEM_KINDS)[number];
+
+/** An amount in minor currency units. */
+const money = z.number().int().min(0).max(1e12);
+
+export const saleItemSchema = z
+  .object({
+    kind: z.literal("service"),
+    /** May be left out when charging an appointment whose service was deleted since. */
+    serviceId: z.string().min(1).nullable().default(null),
+    /** The appointment being charged, if the line is one. */
+    appointmentId: z.string().min(1).optional(),
+    /** Who did it, for commissions. */
+    resourceId: z.string().min(1).nullable().default(null),
+    quantity: z.number().int().min(1).max(999).default(1),
+    unitPrice: money,
+    discountAmount: money.default(0),
+  })
+  .refine((item) => item.serviceId || item.appointmentId, {
+    message: "required",
+    path: ["serviceId"],
+  });
+export type SaleItemInput = z.input<typeof saleItemSchema>;
+
+export const salePaymentSchema = z.object({
+  method: z.enum(SALE_PAYMENT_METHODS),
+  amount: money,
+  /** For "deposit": which one. */
+  depositId: z.string().min(1).optional(),
+});
+
+/**
+ * A sale: its lines, a discount on the whole, tips per professional and how it was paid.
+ * The payments must add up to the total plus the tips.
+ */
+export const saleSchema = z.object({
+  /** Without it, the location of the first appointment charged, or the only one. */
+  locationId: z.string().min(1).optional(),
+  customerId: z.string().min(1).nullable().default(null),
+  internal: z.boolean().default(false),
+  items: z.array(saleItemSchema).min(1).max(100),
+  discountAmount: money.default(0),
+  tips: z
+    .array(z.object({ resourceId: z.string().min(1), amount: money.min(1) }))
+    .max(50)
+    .default([]),
+  payments: z.array(salePaymentSchema).max(10),
+  note: optionalText(500),
+});
+export type SaleInput = z.input<typeof saleSchema>;
+
+/** Money left in advance by a customer, for an appointment or a later visit. */
+export const depositSchema = z.object({
+  customerId: z.string().min(1),
+  appointmentId: z.string().min(1).nullable().default(null),
+  locationId: z.string().min(1).optional(),
+  amount: money.min(1),
+  method: z.enum(PAYMENT_METHODS),
+  note: optionalText(300),
+});
+export type DepositInput = z.input<typeof depositSchema>;
+
 export const TOURS = [
   "welcome",
   "agenda",
