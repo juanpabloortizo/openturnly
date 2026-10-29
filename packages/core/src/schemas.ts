@@ -1238,6 +1238,50 @@ export const stockMovementSchema = z
   );
 export type StockMovementInput = z.input<typeof stockMovementSchema>;
 
+// --- Cash register --------------------------------------------------------
+
+/**
+ * Money that moves outside of sales. "income" and "expense": other income and expenses.
+ * "transfer_out"/"transfer_in": cash taken out of a location's drawer (to the bank, or to
+ * another location). "adjustment": the cash counted differs from what was expected.
+ */
+export const CASH_MOVEMENT_KINDS = [
+  "income",
+  "expense",
+  "transfer_out",
+  "transfer_in",
+  "adjustment",
+] as const;
+export type CashMovementKind = (typeof CASH_MOVEMENT_KINDS)[number];
+
+export const cashMovementSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.enum(["income", "expense"]),
+    locationId: z.string().min(1),
+    amount: money.min(1),
+    method: z.enum(PAYMENT_METHODS),
+    /** "Arriendo", "Proveedor", "Servicios públicos"… free text with suggestions. */
+    category: optionalText(80),
+    description: optionalText(300),
+  }),
+  z.object({
+    kind: z.literal("transfer"),
+    locationId: z.string().min(1),
+    amount: money.min(1),
+    /** Another location's drawer; left out, the cash leaves (to the bank). */
+    toLocationId: z.string().min(1).optional(),
+    description: optionalText(300),
+  }),
+  z.object({
+    kind: z.literal("adjustment"),
+    locationId: z.string().min(1),
+    /** The cash counted in the drawer: it becomes the cash in the register. */
+    counted: money,
+    description: optionalText(300),
+  }),
+]);
+export type CashMovementInput = z.input<typeof cashMovementSchema>;
+
 export const TOURS = [
   "welcome",
   "agenda",

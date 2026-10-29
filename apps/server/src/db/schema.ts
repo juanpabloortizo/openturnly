@@ -5,6 +5,7 @@ import {
   type BookingAnswer,
   type BookingForm,
   BUSINESS_ROLES,
+  CASH_MOVEMENT_KINDS,
   DEFAULT_BOOKING_FORM,
   GIFT_CARD_KINDS,
   PAGE_THEMES,
@@ -752,6 +753,35 @@ export const giftCards = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [uniqueIndex("gift_cards_business_code_idx").on(table.businessId, table.code)],
+);
+
+/**
+ * Money in or out of a location outside of sales: other income, expenses, cash taken out
+ * of the drawer and corrections after counting it.
+ */
+export const cashMovements = pgTable(
+  "cash_movements",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    locationId: text("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: CASH_MOVEMENT_KINDS }).notNull(),
+    /** Positive; for an adjustment, what it adds to (+) or takes from (−) the cash. */
+    amount: bigint("amount", { mode: "number" }).notNull(),
+    /** Income and expenses: how they were paid. Transfers and adjustments are cash. */
+    method: text("method", { enum: PAYMENT_METHODS }).notNull().default("cash"),
+    category: text("category"),
+    description: text("description"),
+    /** Both halves of a transfer between locations share it. */
+    transferId: text("transfer_id"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (table) => [index("cash_movements_business_created_idx").on(table.businessId, table.createdAt)],
 );
 
 export const DEPOSIT_STATUSES = ["active", "void"] as const;
