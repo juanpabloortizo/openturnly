@@ -9,6 +9,7 @@ export { BusinessesPage } from "./businesses.tsx";
 export { CustomersPage } from "./customers.tsx";
 export { GiftCardsPage } from "./gift-cards.tsx";
 export { HoursPage } from "./hours.tsx";
+export { InventoryPage } from "./inventory.tsx";
 export { AdminLayout } from "./layout.tsx";
 export { LocationsPage } from "./locations.tsx";
 export { NewBusinessPage } from "./new-business.tsx";

@@ -39,6 +39,7 @@ export const router = createBrowserRouter([
           { index: true, lazy: page("AgendaPage") },
           { path: "sales", lazy: page("SalesPage") },
           { path: "gift-cards", lazy: page("GiftCardsPage") },
+          { path: "inventory", lazy: page("InventoryPage") },
           { path: "customers", lazy: page("CustomersPage") },
           { path: "locations", lazy: page("LocationsPage") },
           { path: "services", lazy: page("ServicesPage") },

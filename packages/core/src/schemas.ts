@@ -1027,7 +1027,7 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 /** Plus what a sale can be paid with besides money: a deposit left before. */
 export const SALE_PAYMENT_METHODS = [...PAYMENT_METHODS, "deposit", "gift_card"] as const;
 export type SalePaymentMethod = (typeof SALE_PAYMENT_METHODS)[number];
-export const SALE_ITEM_KINDS = ["service", "gift_card"] as const;
+export const SALE_ITEM_KINDS = ["service", "product", "gift_card"] as const;
 export type SaleItemKind = (typeof SALE_ITEM_KINDS)[number];
 
 /** An amount in minor currency units. */
@@ -1035,7 +1035,9 @@ const money = z.number().int().min(0).max(1e12);
 
 export const saleItemSchema = z
   .object({
-    kind: z.literal("service"),
+    kind: z.enum(["service", "product"]),
+    /** For "product": what's sold; stock goes down at the sale's location. */
+    productId: z.string().min(1).optional(),
     /** May be left out when charging an appointment whose service was deleted since. */
     serviceId: z.string().min(1).nullable().default(null),
     /** The appointment being charged, if the line is one. */
@@ -1046,10 +1048,11 @@ export const saleItemSchema = z
     unitPrice: money,
     discountAmount: money.default(0),
   })
-  .refine((item) => item.serviceId || item.appointmentId, {
-    message: "required",
-    path: ["serviceId"],
-  });
+  .refine(
+    (item) =>
+      item.kind === "product" ? Boolean(item.productId) : item.serviceId || item.appointmentId,
+    { message: "required", path: ["serviceId"] },
+  );
 export type SaleItemInput = z.input<typeof saleItemSchema>;
 
 export const salePaymentSchema = z.object({
@@ -1158,6 +1161,82 @@ export const giftCardPatchSchema = z
     note: optionalText(300),
   })
   .partial();
+
+// --- Products and stock -------------------------------------------------------
+
+/** What a product's content is measured in ("250 ml", "1 kg", "12 unidades"). */
+export const PRODUCT_UNITS = ["unit", "ml", "l", "g", "kg", "oz"] as const;
+export type ProductUnit = (typeof PRODUCT_UNITS)[number];
+
+const label = (max: number) => optionalText(max);
+
+export const productSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  /** Barcode or the business's own reference. */
+  sku: label(60),
+  category: label(80),
+  brand: label(80),
+  /** Format or presentation: "Botella", "Tubo", "Caja x12"… */
+  format: label(80),
+  /** How much it holds, in `unit`: 250 (ml). */
+  content: z.number().min(0).max(1e6).nullable().default(null),
+  unit: z.enum(PRODUCT_UNITS).default("unit"),
+  /** Sale price and what it costs the business, in minor units. */
+  priceAmount: money,
+  costAmount: money.nullable().default(null),
+  /** A warning shows when stock at a location goes down to this. */
+  minStock: z.number().int().min(0).max(1e6).default(0),
+  /** Sold to customers; off for supplies used only in the services. */
+  forSale: z.boolean().default(true),
+  active: z.boolean().default(true),
+  /** Units already there when it's created, at `locationId`. */
+  initialStock: z.number().int().min(0).max(1e6).optional(),
+  locationId: z.string().min(1).optional(),
+});
+export type ProductInput = z.input<typeof productSchema>;
+
+/**
+ * What moves stock by hand. "purchase": units come in. "adjustment": a count, which sets
+ * the stock to `quantity`. "internal": used by the business. "transfer": to another location.
+ * Sales and voided sales move stock on their own ("sale", "return").
+ */
+export const MANUAL_STOCK_KINDS = ["purchase", "adjustment", "internal", "transfer"] as const;
+export const STOCK_MOVEMENT_KINDS = [
+  "purchase",
+  "adjustment",
+  "internal",
+  "transfer_out",
+  "transfer_in",
+  "sale",
+  "return",
+] as const;
+export type StockMovementKind = (typeof STOCK_MOVEMENT_KINDS)[number];
+
+export const stockMovementSchema = z
+  .object({
+    kind: z.enum(MANUAL_STOCK_KINDS),
+    productId: z.string().min(1),
+    locationId: z.string().min(1),
+    /** Units in or out; for an adjustment, the units counted. */
+    quantity: z.number().int().min(0).max(1e6),
+    toLocationId: z.string().min(1).optional(),
+    /** For purchases: what each unit cost. */
+    unitCost: money.nullable().default(null),
+    note: optionalText(300),
+  })
+  .refine((move) => move.kind === "adjustment" || move.quantity > 0, {
+    message: "too_small",
+    path: ["quantity"],
+  })
+  .refine(
+    (move) =>
+      move.kind !== "transfer" || (move.toLocationId && move.toLocationId !== move.locationId),
+    {
+      message: "required",
+      path: ["toLocationId"],
+    },
+  );
+export type StockMovementInput = z.input<typeof stockMovementSchema>;
 
 export const TOURS = [
   "welcome",

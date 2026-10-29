@@ -7,6 +7,7 @@ import {
   locations,
   resourceLocations,
   sales,
+  stockMovements,
   weeklyHours,
 } from "../db/schema.ts";
 import { apiError, type BusinessEnv, type Deps, parseBody } from "../lib/http.ts";
@@ -136,7 +137,13 @@ export function locationRoutes({ db }: Deps) {
         .select({ total: count() })
         .from(sales)
         .where(eq(sales.locationId, location.id));
-      if ((booked?.total ?? 0) + (sold?.total ?? 0) > 0) throw apiError(409, "location_in_use");
+      const [moved] = await db
+        .select({ total: count() })
+        .from(stockMovements)
+        .where(eq(stockMovements.locationId, location.id));
+      if ((booked?.total ?? 0) + (sold?.total ?? 0) + (moved?.total ?? 0) > 0) {
+        throw apiError(409, "location_in_use");
+      }
       await db.delete(locations).where(eq(locations.id, location.id));
       return c.body(null, 204);
     });

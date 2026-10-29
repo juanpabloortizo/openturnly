@@ -127,6 +127,13 @@
       "when": 1793314835068,
       "tag": "0017_gift_cards",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793315397026,
+      "tag": "0018_inventory",
+      "breakpoints": true
     }
   ]
 }

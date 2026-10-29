@@ -9,8 +9,10 @@ import {
   GIFT_CARD_KINDS,
   PAGE_THEMES,
   PAYMENT_METHODS,
+  PRODUCT_UNITS,
   SALE_ITEM_KINDS,
   SALE_PAYMENT_METHODS,
+  STOCK_MOVEMENT_KINDS,
 } from "@openturnly/core";
 import {
   type AnyPgColumn,
@@ -18,6 +20,7 @@ import {
   boolean,
   customType,
   date,
+  doublePrecision,
   index,
   integer,
   json,
@@ -581,6 +584,9 @@ export const saleItems = pgTable(
     giftCardId: text("gift_card_id").references((): AnyPgColumn => giftCards.id, {
       onDelete: "set null",
     }),
+    productId: text("product_id").references((): AnyPgColumn => products.id, {
+      onDelete: "set null",
+    }),
     name: text("name").notNull(),
     /** Who did it, for commissions. */
     resourceId: text("resource_id").references(() => resources.id, { onDelete: "set null" }),
@@ -633,6 +639,86 @@ export const salePayments = pgTable(
     }),
   },
   (table) => [index("sale_payments_sale_idx").on(table.saleId)],
+);
+
+// ---------------------------------------------------------------------------
+// Products and stock
+// ---------------------------------------------------------------------------
+
+/** What the business sells or uses: shampoo, wax, a gift box… */
+export const products = pgTable(
+  "products",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    sku: text("sku"),
+    category: text("category"),
+    brand: text("brand"),
+    format: text("format"),
+    content: doublePrecision("content"),
+    unit: text("unit", { enum: PRODUCT_UNITS }).notNull().default("unit"),
+    priceAmount: bigint("price_amount", { mode: "number" }).notNull(),
+    costAmount: bigint("cost_amount", { mode: "number" }),
+    minStock: integer("min_stock").notNull().default(0),
+    forSale: boolean("for_sale").notNull().default(true),
+    active: boolean("active").notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [index("products_business_id_idx").on(table.businessId)],
+);
+
+/** Units of each product at each location, kept in step with the movements. */
+export const productStock = pgTable(
+  "product_stock",
+  {
+    productId: text("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    locationId: text("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "cascade" }),
+    /** May go below zero when something sells before it's entered. */
+    quantity: integer("quantity").notNull().default(0),
+  },
+  (table) => [primaryKey({ columns: [table.productId, table.locationId] })],
+);
+
+/** Every change in stock, with what it left: the inventory's history. */
+export const stockMovements = pgTable(
+  "stock_movements",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    productId: text("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    locationId: text("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: STOCK_MOVEMENT_KINDS }).notNull(),
+    /** Units in (+) or out (−). */
+    quantity: integer("quantity").notNull(),
+    /** Stock at the location right after it. */
+    balanceAfter: integer("balance_after").notNull(),
+    unitCost: bigint("unit_cost", { mode: "number" }),
+    /** The sale that sold (or gave back) it. */
+    saleId: text("sale_id").references(() => sales.id, { onDelete: "set null" }),
+    /** Both halves of a transfer share it. */
+    transferId: text("transfer_id"),
+    note: text("note"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index("stock_movements_business_created_idx").on(table.businessId, table.createdAt),
+    index("stock_movements_product_idx").on(table.productId, table.createdAt),
+  ],
 );
 
 /**
@@ -808,5 +894,6 @@ export type ApiKey = typeof apiKeys.$inferSelect;
 export type Sale = typeof sales.$inferSelect;
 export type Deposit = typeof deposits.$inferSelect;
 export type GiftCard = typeof giftCards.$inferSelect;
+export type Product = typeof products.$inferSelect;
 export type Automation = typeof automations.$inferSelect;
 export type AutomationDelivery = typeof automationDeliveries.$inferSelect;

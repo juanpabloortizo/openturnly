@@ -7,8 +7,10 @@ import type {
   GiftCardKind,
   PageTheme,
   PaymentMethod,
+  ProductUnit,
   SaleItemKind,
   SalePaymentMethod,
+  StockMovementKind,
 } from "@openturnly/core";
 
 /** Error returned by the OpenTurnly API or by Better Auth, normalized to a lowercase code. */
@@ -264,6 +266,7 @@ export type Sale = {
     appointmentId: string | null;
     serviceId: string | null;
     giftCardId: string | null;
+    productId: string | null;
     name: string;
     resourceId: string | null;
     resourceName: string | null;
@@ -280,6 +283,41 @@ export type Sale = {
     depositId: string | null;
     giftCardId: string | null;
   }[];
+};
+
+/** Something the business sells or uses, with its stock at each location. */
+export type Product = {
+  id: string;
+  name: string;
+  sku: string | null;
+  category: string | null;
+  brand: string | null;
+  format: string | null;
+  content: number | null;
+  unit: ProductUnit;
+  priceAmount: number;
+  costAmount: number | null;
+  minStock: number;
+  forSale: boolean;
+  active: boolean;
+  /** Units by location id. */
+  stock: Record<string, number>;
+};
+
+export type StockMovement = {
+  id: string;
+  kind: StockMovementKind;
+  quantity: number;
+  balanceAfter: number;
+  unitCost: number | null;
+  note: string | null;
+  createdAt: string;
+  productId: string;
+  productName: string;
+  locationId: string;
+  locationName: string;
+  sale: { id: string; number: number } | null;
+  createdByName: string | null;
 };
 
 /** A discount code or a gift card with a balance, with how it was used. */

@@ -100,6 +100,8 @@ updates, read the [self-hosting guide](docs/self-hosting.md), or follow the
   per professional, split payments and deposits; void and export sales.
 - **Gift cards**: discount codes for the booking page and the counter, and gift cards with a
   balance to sell or give away.
+- **Inventory**: products and stock per location, alerts, stock in, counts, internal use,
+  transfers, and products sold at checkout.
 - **Customers** with their history, notes and duplicate merging.
 - **Locations**: one business, several branches, each with its own address, hours,
   services and team. Staff can work at several locations and are never booked at two at
