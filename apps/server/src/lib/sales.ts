@@ -7,6 +7,7 @@ import {
   type Business,
   customers,
   deposits,
+  giftCards,
   locations,
   resources,
   saleItems,
@@ -16,6 +17,7 @@ import {
   services,
   users,
 } from "../db/schema.ts";
+import { usableGiftCard } from "./gift-cards.ts";
 import { apiError } from "./http.ts";
 import { resolveLocation } from "./locations.ts";
 import type { Queryable } from "./schedules.ts";
@@ -49,9 +51,7 @@ export async function createSale(
   soldBy: string | null,
 ): Promise<string> {
   return db.transaction(async (tx) => {
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(hashtextextended(${`${business.id}:sales`}, 0))`,
-    );
+    await lockSales(tx, business.id);
 
     // The appointments charged: this business's, confirmed, not charged yet.
     const appointmentIds = [
@@ -190,18 +190,34 @@ export async function createSale(
       }
     }
 
-    const [last] = await tx
-      .select({ number: sql<number>`coalesce(max(${sales.number}), 0)`.mapWith(Number) })
-      .from(sales)
-      .where(eq(sales.businessId, business.id));
+    // A discount code used at the counter, and gift cards paying with what they have left.
+    if (input.giftCardId) {
+      await usableGiftCard(tx, business, { id: input.giftCardId }, "discount");
+    }
+    const byCard = new Map<string, number>();
+    for (const payment of payments) {
+      if (payment.method !== "gift_card") continue;
+      if (!payment.giftCardId) {
+        throw apiError(400, "validation_failed", { payments: "gift_card_required" });
+      }
+      byCard.set(payment.giftCardId, (byCard.get(payment.giftCardId) ?? 0) + payment.amount);
+    }
+    for (const [giftCardId, amount] of byCard) {
+      const card = await usableGiftCard(tx, business, { id: giftCardId }, "balance");
+      if (amount > (card.remaining ?? 0)) {
+        throw apiError(409, "gift_card_balance", { payments: String(card.remaining ?? 0) });
+      }
+    }
+
     const [sale] = await tx
       .insert(sales)
       .values({
         businessId: business.id,
         locationId: location.id,
-        number: (last?.number ?? 0) + 1,
+        number: await nextSaleNumber(tx, business.id),
         customerId,
         internal: input.internal,
+        giftCardId: input.giftCardId ?? null,
         subtotal,
         discountAmount: input.discountAmount,
         total,
@@ -230,6 +246,7 @@ export async function createSale(
           method: payment.method,
           amount: payment.amount,
           depositId: payment.method === "deposit" ? (payment.depositId ?? null) : null,
+          giftCardId: payment.method === "gift_card" ? (payment.giftCardId ?? null) : null,
         })),
       );
     }
@@ -243,7 +260,26 @@ export async function createSale(
   });
 }
 
-/** Voids a sale: it stays in the history, counts nowhere, and its deposits are free again. */
+/** Waits for the business's other sales, so numbers and uses are counted one sale at a time. */
+export async function lockSales(tx: Queryable, businessId: string) {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`${businessId}:sales`}, 0))`,
+  );
+}
+
+/** The business's next sale number. Call it after `lockSales`. */
+export async function nextSaleNumber(tx: Queryable, businessId: string) {
+  const [last] = await tx
+    .select({ number: sql<number>`coalesce(max(${sales.number}), 0)`.mapWith(Number) })
+    .from(sales)
+    .where(eq(sales.businessId, businessId));
+  return (last?.number ?? 0) + 1;
+}
+
+/**
+ * Voids a sale: it stays in the history, counts nowhere, its deposits are free again and
+ * gift cards it sold stop working.
+ */
 export async function voidSale(db: Db, businessId: string, saleId: string) {
   await db.transaction(async (tx) => {
     const [voided] = await tx
@@ -263,6 +299,15 @@ export async function voidSale(db: Db, businessId: string, saleId: string) {
       .update(deposits)
       .set({ appliedSaleId: null })
       .where(eq(deposits.appliedSaleId, saleId));
+    const sold = (
+      await tx
+        .select({ id: saleItems.giftCardId })
+        .from(saleItems)
+        .where(and(eq(saleItems.saleId, saleId), eq(saleItems.kind, "gift_card")))
+    ).flatMap((row) => (row.id ? [row.id] : []));
+    if (sold.length > 0) {
+      await tx.update(giftCards).set({ active: false }).where(inArray(giftCards.id, sold));
+    }
   });
 }
 

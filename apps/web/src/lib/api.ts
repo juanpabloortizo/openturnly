@@ -4,6 +4,7 @@ import type {
   AutomationTrigger,
   BookingAnswer,
   BookingForm,
+  GiftCardKind,
   PageTheme,
   PaymentMethod,
   SaleItemKind,
@@ -163,6 +164,9 @@ export type Appointment = {
   createdAt: string;
   cancelledAt: string | null;
   answers: BookingAnswer[];
+  /** Taken off by the discount code used to book it (`giftCode`). */
+  discountAmount: number;
+  giftCode: string | null;
   /** The sale that charged it, if it was charged. */
   sale: { id: string; number: number } | null;
   /** Deposits left for it and not used yet. */
@@ -226,6 +230,7 @@ export type BookedAppointment = {
   serviceName: string;
   resourceName: string | null;
   priceAmount: number | null;
+  discountAmount: number;
   currency: string;
   location: { name: string; address: string | null };
 };
@@ -258,6 +263,7 @@ export type Sale = {
     kind: SaleItemKind;
     appointmentId: string | null;
     serviceId: string | null;
+    giftCardId: string | null;
     name: string;
     resourceId: string | null;
     resourceName: string | null;
@@ -267,7 +273,34 @@ export type Sale = {
     total: number;
   }[];
   tips: { id: string; resourceId: string | null; resourceName: string; amount: number }[];
-  payments: { id: string; method: SalePaymentMethod; amount: number; depositId: string | null }[];
+  payments: {
+    id: string;
+    method: SalePaymentMethod;
+    amount: number;
+    depositId: string | null;
+    giftCardId: string | null;
+  }[];
+};
+
+/** A discount code or a gift card with a balance, with how it was used. */
+export type GiftCard = {
+  id: string;
+  code: string;
+  kind: GiftCardKind;
+  percent: number | null;
+  amount: number | null;
+  maxUses: number | null;
+  validFrom: string | null;
+  validUntil: string | null;
+  note: string | null;
+  active: boolean;
+  createdAt: string;
+  uses: number;
+  spent: number;
+  /** Gift cards: what's left on it. */
+  remaining: number | null;
+  state: "active" | "inactive" | "scheduled" | "expired" | "used_up" | "spent";
+  customer: { id: string; firstName: string; lastName: string } | null;
 };
 
 /** Money a customer left in advance ("abono"). */

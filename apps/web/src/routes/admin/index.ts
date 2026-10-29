@@ -7,6 +7,7 @@ export { BusinessAccessPage } from "./business-access.tsx";
 export { SettingsPage } from "./business-details.tsx";
 export { BusinessesPage } from "./businesses.tsx";
 export { CustomersPage } from "./customers.tsx";
+export { GiftCardsPage } from "./gift-cards.tsx";
 export { HoursPage } from "./hours.tsx";
 export { AdminLayout } from "./layout.tsx";
 export { LocationsPage } from "./locations.tsx";

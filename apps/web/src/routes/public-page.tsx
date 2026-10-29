@@ -34,7 +34,7 @@ import {
   type PublicBusiness,
   type PublicCatalog,
 } from "../lib/api.ts";
-import { useAvailability, useBook, usePublicCatalog } from "../lib/booking.ts";
+import { useAvailability, useBook, useGiftCodeCheck, usePublicCatalog } from "../lib/booking.ts";
 import { brandStyle } from "../lib/brand.ts";
 import { cn } from "../lib/cn.ts";
 import { formatDay, formatDuration } from "../lib/format.ts";
@@ -177,6 +177,8 @@ function BookingWizard({
   const [errors, setErrors] = useState<FieldErrors>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [booked, setBooked] = useState<BookedAppointment | null>(null);
+  // A discount code that worked for the chosen service.
+  const [gift, setGift] = useState<{ code: string; discountAmount: number } | null>(null);
   // The anti-bot puzzle is solved in the background from the moment a time is being chosen.
   const takeProof = useBookingProof(slug, stepIndex >= steps.indexOf("datetime"));
   const book = useBook(slug, takeProof);
@@ -200,6 +202,7 @@ function BookingWizard({
   /** Picks a service; a different one starts the date, time and person over. */
   const chooseService = (id: string) => {
     if (id !== serviceId) {
+      setGift(null);
       setDate(null);
       setTime(null);
       setPreferredId(null);
@@ -257,6 +260,7 @@ function BookingWizard({
         time,
         customer: details.customer,
         answers: Object.fromEntries(details.answers.map((answer) => [answer.id, answer.value])),
+        ...(gift ? { giftCode: gift.code } : {}),
         website,
       },
       {
@@ -266,6 +270,8 @@ function BookingWizard({
         },
         onError: (error) => {
           const code = error instanceof ApiError ? error.code : "unknown_error";
+          // The code stopped working meanwhile (its last use went to someone else).
+          if (code === "gift_card_unusable" || code === "gift_card_not_found") setGift(null);
           if (code === "slot_taken") {
             // Someone got there first: back to the times, which reload without that one.
             setTime(null);
@@ -648,10 +654,26 @@ function BookingWizard({
                 ? [{ label: t("booking.email"), value: details.customer.email }]
                 : []),
               ...details.answers.map((answer) => ({ label: answer.label, value: answer.value })),
+              ...(gift && service.priceAmount !== null
+                ? [
+                    { label: t("booking.price"), value: price(service.priceAmount) },
+                    {
+                      label: t("booking.discountCode", { code: gift.code }),
+                      value: `−${formatPrice(gift.discountAmount, business.currency)}`,
+                    },
+                  ]
+                : []),
             ]}
-            total={price(service.priceAmount)}
+            total={
+              gift && service.priceAmount !== null
+                ? formatPrice(service.priceAmount - gift.discountAmount, business.currency)
+                : price(service.priceAmount)
+            }
             t={t}
           />
+        )}
+        {step === "confirm" && service && (
+          <GiftCodeBox slug={slug} serviceId={service.id} applied={gift} onApply={setGift} t={t} />
         )}
         {step === "confirm" && slowCheck && (
           <p className="mt-4 flex items-center gap-2 text-[13px] text-zinc-500" role="status">
@@ -1127,11 +1149,22 @@ function BookingDone({
               ? [{ label: t("booking.professional"), value: appointment.resourceName }]
               : []),
             { label: t("booking.service"), value: appointment.serviceName },
+            ...(appointment.discountAmount > 0
+              ? [
+                  {
+                    label: t("booking.discount"),
+                    value: `−${formatPrice(appointment.discountAmount, appointment.currency)}`,
+                  },
+                ]
+              : []),
           ]}
           total={
             appointment.priceAmount === null
               ? t("services.priceOnRequest")
-              : formatPrice(appointment.priceAmount, appointment.currency)
+              : formatPrice(
+                  appointment.priceAmount - appointment.discountAmount,
+                  appointment.currency,
+                )
           }
           t={t}
         />
@@ -1142,6 +1175,94 @@ function BookingDone({
           {t("booking.bookAgain")}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** "¿Tienes un código de descuento?": checked against the chosen service before booking. */
+function GiftCodeBox({
+  slug,
+  serviceId,
+  applied,
+  onApply,
+  t,
+}: {
+  slug: string;
+  serviceId: string;
+  applied: { code: string; discountAmount: number } | null;
+  onApply: (gift: { code: string; discountAmount: number } | null) => void;
+  t: T;
+}) {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const check = useGiftCodeCheck(slug);
+
+  if (applied) {
+    return (
+      <p className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-brand-50/60 px-4 py-3 text-sm">
+        <span className="text-zinc-700">{t("booking.codeApplied", { code: applied.code })}</span>
+        <button
+          type="button"
+          className="font-medium text-brand-700 hover:underline"
+          onClick={() => onApply(null)}
+        >
+          {t("booking.removeCode")}
+        </button>
+      </p>
+    );
+  }
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="mt-4 text-sm font-medium text-brand-700 hover:underline"
+        onClick={() => setOpen(true)}
+      >
+        {t("booking.haveCode")}
+      </button>
+    );
+  }
+  const apply = () => {
+    if (!code.trim()) return;
+    check.mutate(
+      { code, serviceId },
+      {
+        onSuccess: (result) =>
+          onApply({ code: result.code, discountAmount: result.discountAmount }),
+      },
+    );
+  };
+  const problem =
+    check.error instanceof ApiError
+      ? check.error.code === "gift_card_unusable"
+        ? t(
+            `booking.codeStates.${check.error.fields.code ?? "inactive"}` as "booking.codeStates.inactive",
+          )
+        : check.error.code === "gift_card_not_found"
+          ? t("booking.codeNotFound")
+          : t("errors.unknown_error")
+      : null;
+  return (
+    <div className="mt-4 space-y-2">
+      <div className="flex gap-2">
+        <Input
+          aria-label={t("booking.codePlaceholder")}
+          placeholder={t("booking.codePlaceholder")}
+          className="font-mono uppercase"
+          value={code}
+          onChange={(event) => setCode(event.target.value.toUpperCase())}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              apply();
+            }
+          }}
+        />
+        <Button variant="secondary" onClick={apply} loading={check.isPending}>
+          {t("booking.applyCode")}
+        </Button>
+      </div>
+      {problem && <p className="text-[13px] text-red-600">{problem}</p>}
     </div>
   );
 }

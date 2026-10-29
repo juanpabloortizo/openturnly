@@ -545,6 +545,14 @@ function AppointmentDetails({
           ? t("services.priceOnRequest")
           : formatPrice(appointment.priceAmount, business.currency),
     },
+    ...(appointment.discountAmount > 0
+      ? [
+          {
+            label: t("booking.discountCode", { code: appointment.giftCode ?? "" }),
+            value: `−${formatPrice(appointment.discountAmount, business.currency)}`,
+          },
+        ]
+      : []),
     // Answers to the business's own questions.
     ...appointment.answers.map((answer) => ({ label: answer.label, value: answer.value })),
     { label: t("agenda.bookedVia"), value: bookedVia(t, appointment) },

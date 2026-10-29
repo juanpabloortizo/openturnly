@@ -14,6 +14,7 @@ import {
   type Business,
   customers,
   deposits,
+  giftCards,
   locations,
   resources,
   services,
@@ -145,6 +146,8 @@ export function appointmentRoutes({ db, automations }: Deps) {
             resourceId: appointments.resourceId,
             resourceName: appointments.resourceName,
             priceAmount: appointments.priceAmount,
+            discountAmount: appointments.discountAmount,
+            giftCode: giftCards.code,
             answers: appointments.answers,
             source: appointments.source,
             sourceLabel: appointments.sourceLabel,
@@ -161,6 +164,7 @@ export function appointmentRoutes({ db, automations }: Deps) {
           .from(appointments)
           .innerJoin(customers, eq(customers.id, appointments.customerId))
           .leftJoin(locations, eq(locations.id, appointments.locationId))
+          .leftJoin(giftCards, eq(giftCards.id, appointments.giftCardId))
           .where(
             and(
               eq(appointments.businessId, c.get("business").id),

@@ -64,3 +64,14 @@ export function useBook(slug: string, takeProof: () => Promise<string>) {
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["public", slug, "availability"] }),
   });
 }
+
+/** Whether a discount code works for a service on the booking page, and how much it takes off. */
+export function useGiftCodeCheck(slug: string) {
+  return useMutation({
+    mutationFn: (input: { code: string; serviceId: string }) =>
+      api<{ code: string; discountAmount: number; priceAmount: number }>(
+        `/api/public/businesses/${slug}/gift-code`,
+        { method: "POST", body: input },
+      ),
+  });
+}
