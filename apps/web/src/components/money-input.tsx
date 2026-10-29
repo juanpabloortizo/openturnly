@@ -5,6 +5,9 @@ import { cn } from "../lib/cn.ts";
 import { currencySymbol } from "../lib/format.ts";
 import { Input } from "./ui.tsx";
 
+const toText = (amount: number, currency: string) =>
+  amount === 0 ? "" : String(fromMinorUnits(amount, currency));
+
 /**
  * An amount typed in the currency's main unit ("25000" or "12,50") and kept in minor units,
  * with the currency symbol in front. Empty reads as 0.
@@ -29,17 +32,15 @@ export function MoneyInput({
   "aria-label"?: string;
 }) {
   const { i18n } = useTranslation();
-  const toText = (amount: number) => (amount === 0 ? "" : String(fromMinorUnits(amount, currency)));
-  const [text, setText] = useState(() => toText(value));
+  const [text, setText] = useState(() => toText(value, currency));
 
   // Follow changes made from outside (a total filled in for you) without fighting the typing.
   useEffect(() => {
     setText((current) => {
       const typed = Number(current.replace(",", "."));
       const same = (Number.isNaN(typed) ? 0 : toMinorUnits(typed, currency)) === value;
-      return same ? current : toText(value);
+      return same ? current : toText(value, currency);
     });
-    // biome-ignore lint/correctness/useExhaustiveDependencies: toText only depends on currency.
   }, [value, currency]);
 
   return (
