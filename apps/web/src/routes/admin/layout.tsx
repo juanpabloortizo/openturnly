@@ -7,6 +7,7 @@ import {
   ChevronsUpDown,
   Clock3,
   Contact,
+  MapPin,
   Menu,
   Plus,
   Scissors,
@@ -180,6 +181,12 @@ function SidebarContent({ user, collapsed }: { user: User; collapsed: boolean })
                 label: t("nav.professionals"),
                 icon: Users,
                 tour: "professionals",
+              },
+              {
+                to: `${base}/locations`,
+                label: t("nav.locations"),
+                icon: MapPin,
+                tour: "locations",
               },
               { to: `${base}/hours`, label: t("nav.hours"), icon: Clock3, tour: "hours" },
               {

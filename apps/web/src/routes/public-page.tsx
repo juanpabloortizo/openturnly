@@ -16,11 +16,12 @@ import {
   ChevronLeft,
   Clock,
   LoaderCircle,
+  MapPin,
   RotateCcw,
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 import { BookingBackdrop, isDarkTheme } from "../components/booking-backdrop.tsx";
 import { BookingHeader } from "../components/booking-header.tsx";
 import { Combobox } from "../components/combobox.tsx";
@@ -40,7 +41,7 @@ import { formatDay, formatDuration } from "../lib/format.ts";
 import { type FieldErrors, fieldMessage, validate } from "../lib/forms.ts";
 import { useBookingProof } from "../lib/proof.ts";
 
-type Step = "service" | "datetime" | "details" | "confirm";
+type Step = "location" | "service" | "datetime" | "details" | "confirm";
 type T = TFunction;
 
 /** The page a business shares with its customers: /<slug>. */
@@ -134,12 +135,30 @@ function BookingWizard({
   t: T;
   locale: string;
 }) {
-  const { business, professionals, services } = catalog;
-  // The time comes before the person: customers see who is free when, instead of picking
-  // someone first and finding them fully booked.
-  const steps: Step[] = ["service", "datetime", "details", "confirm"];
+  const { business, professionals, locations } = catalog;
+  // With several locations the customer starts by choosing where. A link to one location
+  // (?local=<id>) starts on its services. The time comes before the person: customers see
+  // who is free when, instead of picking someone first and finding them fully booked.
+  const severalLocations = locations.length > 1;
+  const steps: Step[] = [
+    ...(severalLocations ? (["location"] as const) : []),
+    "service",
+    "datetime",
+    "details",
+    "confirm",
+  ];
+  const [searchParams] = useSearchParams();
+  const linked = locations.find((place) => place.id === searchParams.get("local"));
 
-  const [stepIndex, setStepIndex] = useState(0);
+  const [stepIndex, setStepIndex] = useState(severalLocations && linked ? 1 : 0);
+  const [locationId, setLocationId] = useState<string | null>(
+    linked?.id ?? (severalLocations ? null : (locations[0]?.id ?? null)),
+  );
+  const location = locations.find((place) => place.id === locationId);
+  // What the chosen location offers.
+  const services = location
+    ? catalog.services.filter((service) => location.serviceIds.includes(service.id))
+    : catalog.services;
   const [serviceId, setServiceId] = useState<string | null>(null);
   // Someone the customer wants to see (narrows the times), or null for anyone.
   const [preferredId, setPreferredId] = useState<string | null>(null);
@@ -159,7 +178,7 @@ function BookingWizard({
   const [notice, setNotice] = useState<string | null>(null);
   const [booked, setBooked] = useState<BookedAppointment | null>(null);
   // The anti-bot puzzle is solved in the background from the moment a time is being chosen.
-  const takeProof = useBookingProof(slug, stepIndex >= 1);
+  const takeProof = useBookingProof(slug, stepIndex >= steps.indexOf("datetime"));
   const book = useBook(slug, takeProof);
   // Usually instant; while a business is flooded with bookings the puzzle takes longer.
   const [slowCheck, setSlowCheck] = useState(false);
@@ -188,8 +207,24 @@ function BookingWizard({
     }
     setServiceId(id);
   };
-  // Who can do the chosen service.
-  const team = professionals.filter((member) => serviceId && member.serviceIds.includes(serviceId));
+  /** Picks a location; another one starts the service, date, time and person over. */
+  const chooseLocation = (id: string) => {
+    if (id !== locationId) {
+      setServiceId(null);
+      setDate(null);
+      setTime(null);
+      setPreferredId(null);
+      setStaffId(null);
+    }
+    setLocationId(id);
+  };
+  // Who can do the chosen service, at the chosen location.
+  const team = professionals.filter(
+    (member) =>
+      serviceId &&
+      member.serviceIds.includes(serviceId) &&
+      (!location || location.professionalIds.includes(member.id)),
+  );
 
   // When the step last changed. "Continuar" sits in the same place on every step, so a quick
   // second click would land on the next step's button: submitting an empty form, or booking
@@ -215,6 +250,7 @@ function BookingWizard({
     if (!service || !date || !time || !details) return;
     book.mutate(
       {
+        ...(location ? { locationId: location.id } : {}),
         serviceId: service.id,
         resourceId,
         date,
@@ -295,10 +331,12 @@ function BookingWizard({
       <div className="mt-6 border-t border-zinc-100">
         <BookingDone
           appointment={booked}
+          showLocation={severalLocations}
           t={t}
           locale={locale}
           onAgain={() => {
             setBooked(null);
+            if (severalLocations) setLocationId(null);
             setServiceId(null);
             setDate(null);
             setTime(null);
@@ -310,12 +348,14 @@ function BookingWizard({
   }
 
   const labels: Record<Step, string> = {
+    location: t("booking.steps.location"),
     service: t("booking.steps.service"),
     datetime: t("booking.steps.datetime"),
     details: t("booking.steps.details"),
     confirm: t("booking.steps.confirm"),
   };
   const titles: Record<Step, string> = {
+    location: t("booking.titles.location"),
     service: t("booking.titles.service"),
     datetime: t("booking.titles.datetime"),
     details: t("booking.titles.details"),
@@ -373,6 +413,47 @@ function BookingWizard({
           <div className="mb-5">
             <Alert>{notice}</Alert>
           </div>
+        )}
+
+        {step === "location" && (
+          <ul className="space-y-3">
+            {locations.map((place) => (
+              <li key={place.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    chooseLocation(place.id);
+                    next();
+                  }}
+                  className={cn(
+                    "group block w-full rounded-2xl border p-4 text-left transition duration-200 hover:-translate-y-px hover:border-brand-300 hover:shadow-[0_12px_28px_-16px_rgb(15_15_35/0.35)] sm:p-5",
+                    place.id === locationId
+                      ? "border-brand-500 bg-brand-50/40"
+                      : "border-zinc-200 bg-white",
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="font-medium text-zinc-900">{place.name}</div>
+                      {place.address && (
+                        <div className="mt-1.5 flex items-start gap-1.5 text-sm text-zinc-500">
+                          <MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                          <span>{place.address}</span>
+                        </div>
+                      )}
+                      {place.phone && (
+                        <div className="mt-1 text-sm text-zinc-500 tabular-nums">{place.phone}</div>
+                      )}
+                    </div>
+                    <ArrowRight
+                      className="mt-0.5 size-4 shrink-0 text-zinc-300 transition group-hover:translate-x-0.5 group-hover:text-brand-600"
+                      aria-hidden
+                    />
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
 
         {step === "service" &&
@@ -473,6 +554,7 @@ function BookingWizard({
           <DateTimeStep
             slug={slug}
             catalog={catalog}
+            locationId={location?.id ?? null}
             serviceId={service.id}
             team={team}
             preferredId={preferredId}
@@ -537,6 +619,14 @@ function BookingWizard({
         {step === "confirm" && service && date && time && details && (
           <Summary
             rows={[
+              ...(severalLocations && location
+                ? [
+                    {
+                      label: t("booking.location"),
+                      value: [location.name, location.address].filter(Boolean).join(" · "),
+                    },
+                  ]
+                : []),
               { label: t("booking.date"), value: `${formatDay(date, locale)} · ${time}` },
               ...(professional || team.length > 1
                 ? [
@@ -797,6 +887,7 @@ type TeamMember = PublicCatalog["professionals"][number];
 function DateTimeStep({
   slug,
   catalog,
+  locationId,
   serviceId,
   team,
   preferredId,
@@ -812,6 +903,7 @@ function DateTimeStep({
 }: {
   slug: string;
   catalog: PublicCatalog;
+  locationId: string | null;
   serviceId: string;
   /** Professionals who do this service. */
   team: TeamMember[];
@@ -836,6 +928,7 @@ function DateTimeStep({
   const to = lastOfMonth > lastDate ? lastDate : lastOfMonth;
 
   const availability = useAvailability(slug, {
+    locationId,
     serviceId,
     resourceId: preferredId,
     from,
@@ -989,11 +1082,13 @@ function Summary({
 
 function BookingDone({
   appointment,
+  showLocation,
   t,
   locale,
   onAgain,
 }: {
   appointment: BookedAppointment;
+  showLocation: boolean;
   t: T;
   locale: string;
   onAgain: () => void;
@@ -1014,6 +1109,16 @@ function BookingDone({
       <div className="mt-7 w-full max-w-md text-left">
         <Summary
           rows={[
+            ...(showLocation
+              ? [
+                  {
+                    label: t("booking.location"),
+                    value: [appointment.location.name, appointment.location.address]
+                      .filter(Boolean)
+                      .join(" · "),
+                  },
+                ]
+              : []),
             {
               label: t("booking.date"),
               value: `${formatDay(appointment.date, locale)} · ${appointment.time}`,

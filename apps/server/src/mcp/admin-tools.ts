@@ -404,14 +404,14 @@ export function registerAdminTools(tool: Tool, ctx: ToolContext) {
     {
       title: "Weekly hours",
       description:
-        "The business's weekly opening hours, or a professional's own hours (professionals without their own follow the business's).",
-      input: z.object({ professional_id: id.optional() }),
+        "A location's weekly opening hours, or a professional's own hours there (professionals without their own follow the location's). Without location_id, the first location.",
+      input: z.object({ location_id: id.optional(), professional_id: id.optional() }),
       readOnly: true,
     },
     async (args) => {
       const hours = await call<{ business: Range[]; professionals: Record<string, Range[]> }>(
         "GET",
-        `${base}/hours`,
+        `${base}/hours${args.location_id ? `?locationId=${encodeURIComponent(args.location_id)}` : ""}`,
       );
       if (!args.professional_id) return { hours: rangesView(hours.business) };
       const own = hours.professionals[args.professional_id];
@@ -426,14 +426,16 @@ export function registerAdminTools(tool: Tool, ctx: ToolContext) {
     {
       title: "Change weekly hours",
       description:
-        "Replaces the weekly hours of the business, or of one professional. List every open range; days left out are closed. For a professional, an empty list makes them follow the business's hours again.",
+        "Replaces the weekly hours of a location (the first one without location_id), or of one professional at that location. List every open range; days left out are closed. For a professional, an empty list makes them follow the location's hours again.",
       input: z.object({
+        location_id: id.optional(),
         professional_id: id.optional(),
         hours: z.array(z.object({ day: z.enum(DAYS), start: time, end: time })),
       }),
     },
     async (args) => {
       const { hours } = await call<{ hours: Range[] }>("PUT", `${base}/hours`, {
+        locationId: args.location_id,
         resourceId: args.professional_id ?? null,
         hours: args.hours.map((range) => ({
           weekday: DAYS.indexOf(range.day),
@@ -459,6 +461,7 @@ export function registerAdminTools(tool: Tool, ctx: ToolContext) {
           id: string;
           date: string;
           endDate: string;
+          locationId: string | null;
           resourceId: string | null;
           note: string | null;
         }[];
@@ -467,6 +470,7 @@ export function registerAdminTools(tool: Tool, ctx: ToolContext) {
         id: closure.id,
         from: closure.date,
         until: closure.endDate,
+        location_id: closure.locationId,
         professional_id: closure.resourceId,
         note: closure.note,
       }));
@@ -478,10 +482,11 @@ export function registerAdminTools(tool: Tool, ctx: ToolContext) {
     {
       title: "Close some days",
       description:
-        "Closes the business, or one professional, on a date or a range of dates (vacations, a day off). Existing appointments are not cancelled.",
+        "Closes every location, one location (location_id) or one professional wherever they work, on a date or a range of dates (vacations, a day off). Existing appointments are not cancelled.",
       input: z.object({
         date,
         until_date: date.optional(),
+        location_id: id.optional(),
         professional_id: id.optional(),
         note: z.string().max(120).optional(),
       }),
@@ -490,6 +495,7 @@ export function registerAdminTools(tool: Tool, ctx: ToolContext) {
       const { closure } = await call<{ closure: { id: string } }>("POST", `${base}/closures`, {
         date: args.date,
         endDate: args.until_date ?? args.date,
+        locationId: args.location_id ?? null,
         resourceId: args.professional_id ?? null,
         note: args.note ?? null,
       });

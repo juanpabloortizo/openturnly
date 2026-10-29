@@ -241,6 +241,33 @@ export const businessImages = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Locations: the places a business works from. Every business has at least one.
+// ---------------------------------------------------------------------------
+
+/**
+ * A branch of the business, with its own address, opening hours, services and people.
+ * All of a business's locations share its time zone, currency and booking rules.
+ */
+export const locations = pgTable(
+  "locations",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    address: text("address"),
+    phone: text("phone"),
+    /** Inactive locations take no bookings and are hidden from the booking page. */
+    active: boolean("active").notNull().default(true),
+    position: integer("position").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [index("locations_business_id_idx").on(table.businessId)],
+);
+
+// ---------------------------------------------------------------------------
 // Catalog: what can be booked, and with whom
 // ---------------------------------------------------------------------------
 
@@ -301,13 +328,48 @@ export const resourceServices = pgTable(
   ],
 );
 
+/** Which services each location offers. */
+export const locationServices = pgTable(
+  "location_services",
+  {
+    locationId: text("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "cascade" }),
+    serviceId: text("service_id")
+      .notNull()
+      .references(() => services.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.locationId, table.serviceId] }),
+    index("location_services_service_id_idx").on(table.serviceId),
+  ],
+);
+
+/** Where each professional works. Someone can work in several locations. */
+export const resourceLocations = pgTable(
+  "resource_locations",
+  {
+    resourceId: text("resource_id")
+      .notNull()
+      .references(() => resources.id, { onDelete: "cascade" }),
+    locationId: text("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.resourceId, table.locationId] }),
+    index("resource_locations_location_id_idx").on(table.locationId),
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // Opening hours
 // ---------------------------------------------------------------------------
 
 /**
- * Weekly opening hours as wall-clock times in the business time zone.
- * `resourceId` null: the business hours. A professional without rows uses the business hours.
+ * Weekly opening hours as wall-clock times in the business time zone, per location.
+ * `resourceId` null: the location's hours. A professional without rows at a location
+ * works there on the location's hours.
  */
 export const weeklyHours = pgTable(
   "weekly_hours",
@@ -316,6 +378,9 @@ export const weeklyHours = pgTable(
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade" }),
+    locationId: text("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "cascade" }),
     resourceId: text("resource_id").references(() => resources.id, { onDelete: "cascade" }),
     /** 0 = Sunday … 6 = Saturday */
     weekday: integer("weekday").notNull(),
@@ -325,7 +390,10 @@ export const weeklyHours = pgTable(
   (table) => [index("weekly_hours_business_id_idx").on(table.businessId)],
 );
 
-/** Days without bookings: holidays, vacations. `resourceId` null closes the whole business. */
+/**
+ * Days without bookings: holidays, vacations. A professional's closure applies wherever
+ * they work; otherwise `locationId` closes one location, or every one when null.
+ */
 export const closures = pgTable(
   "closures",
   {
@@ -333,6 +401,7 @@ export const closures = pgTable(
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade" }),
+    locationId: text("location_id").references(() => locations.id, { onDelete: "cascade" }),
     resourceId: text("resource_id").references(() => resources.id, { onDelete: "cascade" }),
     /** First and last closed day (inclusive), "YYYY-MM-DD" in the business time zone. */
     date: date("date", { mode: "string" }).notNull(),
@@ -403,6 +472,8 @@ export const appointments = pgTable(
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade" }),
+    /** Locations with appointments can't be deleted, only made inactive. */
+    locationId: text("location_id").references(() => locations.id, { onDelete: "set null" }),
     serviceId: text("service_id").references(() => services.id, { onDelete: "set null" }),
     resourceId: text("resource_id").references(() => resources.id, { onDelete: "set null" }),
     customerId: text("customer_id")
@@ -428,6 +499,7 @@ export const appointments = pgTable(
     index("appointments_business_starts_idx").on(table.businessId, table.startsAt),
     index("appointments_resource_starts_idx").on(table.resourceId, table.startsAt),
     index("appointments_customer_idx").on(table.customerId),
+    index("appointments_location_starts_idx").on(table.locationId, table.startsAt),
     uniqueIndex("appointments_code_idx").on(table.code),
   ],
 );
@@ -525,6 +597,7 @@ export const automationDeliveries = pgTable(
 
 export type User = typeof users.$inferSelect;
 export type Business = typeof businesses.$inferSelect;
+export type Location = typeof locations.$inferSelect;
 export type Invitation = typeof invitations.$inferSelect;
 export type Service = typeof services.$inferSelect;
 export type Resource = typeof resources.$inferSelect;

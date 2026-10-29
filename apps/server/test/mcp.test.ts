@@ -130,7 +130,8 @@ describe("MCP server", () => {
 
     const info = await run(agent, "get_business_info");
     expect(info).toMatchObject({ name: "FTE Barber Studio", time_zone: "America/Bogota" });
-    expect(info.opening_hours).toHaveLength(7);
+    expect(info.locations).toHaveLength(1);
+    expect(info.locations[0].opening_hours).toHaveLength(7);
     expect(info.booking_needs.phone).toBe("required");
 
     const services = await run(agent, "list_services");

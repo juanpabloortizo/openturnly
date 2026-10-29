@@ -11,6 +11,7 @@ import { ApiError, type CustomerSummary } from "../../lib/api.ts";
 import {
   useCreateAppointment,
   useCustomerSearch,
+  useLocations,
   useNewAppointmentSlots,
   useProfessionals,
   useServices,
@@ -27,13 +28,27 @@ const EMPTY_CUSTOMER = { firstName: "", lastName: "", phone: "", email: "" };
  * existing customer or a new one, a service, who attends, and a free time. Professionals
  * always book for themselves.
  */
-export function NewAppointmentForm({ onClose }: { onClose: () => void }) {
+export function NewAppointmentForm({
+  onClose,
+  locationId: initialLocationId = null,
+}: {
+  onClose: () => void;
+  /** The location the agenda is showing, to start there. */
+  locationId?: string | null;
+}) {
   const { t, i18n } = useTranslation();
   const language = i18n.resolvedLanguage ?? "es";
   const { business } = useBusinessContext();
   const isProfessional = business.access.role === "professional";
   const services = useServices(business.id);
   const professionals = useProfessionals(business.id);
+  const locations = useLocations(business.id);
+  // Where an appointment can be: active locations, and for professionals only their own.
+  const places = (locations.data ?? []).filter(
+    (location) =>
+      location.active &&
+      (!isProfessional || location.resourceIds.includes(business.access.resourceId ?? "")),
+  );
   const create = useCreateAppointment(business.id);
   const today = todayIn(business.timezone);
 
@@ -42,7 +57,13 @@ export function NewAppointmentForm({ onClose }: { onClose: () => void }) {
   const [debounced, setDebounced] = useState("");
   const [picked, setPicked] = useState<CustomerSummary | null>(null);
   const [draft, setDraft] = useState(EMPTY_CUSTOMER);
-  const activeServices = services.data?.filter((service) => service.active) ?? [];
+  const [pickedLocationId, setLocationId] = useState<string | null>(initialLocationId);
+  const location = places.find((place) => place.id === pickedLocationId) ?? places[0] ?? null;
+  const locationId = location?.id ?? null;
+  const activeServices =
+    services.data?.filter(
+      (service) => service.active && (!location || location.serviceIds.includes(service.id)),
+    ) ?? [];
   const [serviceId, setServiceId] = useState<string | null>(null);
   const [resourceId, setResourceId] = useState<string | null>(
     isProfessional ? business.access.resourceId : null,
@@ -55,15 +76,20 @@ export function NewAppointmentForm({ onClose }: { onClose: () => void }) {
     const timer = setTimeout(() => setDebounced(query), 250);
     return () => clearTimeout(timer);
   }, [query]);
-  // Start on the first service once they load.
+  // Start on the first service the location offers once they load.
   useEffect(() => {
-    if (serviceId === null && activeServices[0]) setServiceId(activeServices[0].id);
+    if (activeServices.some((service) => service.id === serviceId)) return;
+    const first = activeServices[0]?.id ?? null;
+    if (first !== serviceId) setServiceId(first);
   }, [serviceId, activeServices]);
 
   const results = useCustomerSearch(business.id, debounced);
-  const slots = useNewAppointmentSlots(business.id, serviceId, date);
+  const slots = useNewAppointmentSlots(business.id, locationId, serviceId, date);
   const team = (professionals.data ?? []).filter(
-    (professional) => serviceId && professional.serviceIds.includes(serviceId),
+    (professional) =>
+      serviceId &&
+      professional.serviceIds.includes(serviceId) &&
+      (!location || location.resourceIds.includes(professional.id)),
   );
   const times = (slots.data ?? []).filter(
     (slot) => resourceId === null || slot.resourceIds.includes(resourceId),
@@ -72,6 +98,7 @@ export function NewAppointmentForm({ onClose }: { onClose: () => void }) {
 
   const save = () => {
     const input = {
+      ...(locationId ? { locationId } : {}),
       serviceId: serviceId ?? "",
       resourceId,
       date,
@@ -291,6 +318,27 @@ export function NewAppointmentForm({ onClose }: { onClose: () => void }) {
             )}
           </div>
 
+          {places.length > 1 && (
+            <Field label={t("locations.pick")}>
+              {(props) => (
+                <Select
+                  {...props}
+                  value={locationId ?? ""}
+                  onChange={(event) => {
+                    setLocationId(event.target.value);
+                    if (!isProfessional) setResourceId(null);
+                    setTime(null);
+                  }}
+                >
+                  {places.map((place) => (
+                    <option key={place.id} value={place.id}>
+                      {place.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          )}
           <Field label={t("booking.service")}>
             {(props) => (
               <Select

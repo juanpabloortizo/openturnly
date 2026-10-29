@@ -8,6 +8,7 @@ import { automationRoutes } from "./automations.ts";
 import { customerRoutes } from "./customers.ts";
 import { hoursRoutes } from "./hours.ts";
 import { imageRoutes } from "./images.ts";
+import { locationRoutes } from "./locations.ts";
 import { professionalRoutes } from "./professionals.ts";
 import { serviceRoutes } from "./services.ts";
 
@@ -25,6 +26,7 @@ const PROFESSIONAL_ROUTES: [string, RegExp][] = [
   ["GET", /^\/services$/],
   ["GET", /^\/professionals$/],
   ["GET", /^\/hours$/],
+  ["GET", /^\/locations$/],
 ];
 
 /**
@@ -55,6 +57,7 @@ export function businessScopedRoutes(deps: Deps) {
       c.set("access", access);
       await next();
     })
+    .route("/locations", locationRoutes(deps))
     .route("/services", serviceRoutes(deps))
     .route("/professionals", professionalRoutes(deps))
     .route("/appointments", appointmentRoutes(deps))

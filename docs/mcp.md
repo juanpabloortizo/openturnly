@@ -39,7 +39,7 @@ business's currency, in its main unit.
 
 | Tool | Booking agent | Administration |
 | --- | :-: | :-: |
-| `get_business_info`: contact, hours, closures, holidays, rules, what a booking needs | ✓ | ✓ |
+| `get_business_info`: contact, locations and their hours, closures, holidays, rules, what a booking needs | ✓ | ✓ |
 | `list_services`, `list_professionals` | ✓ | ✓ (also inactive ones) |
 | `find_available_times`, `find_next_available` | ✓ customers' rules | ✓ business rules |
 | `book_appointment` | ✓ | ✓ (also existing customers) |
@@ -53,6 +53,10 @@ business's currency, in its main unit.
 | `list_closures`, `add_closure`, `remove_closure`, `list_holidays`, `set_holiday` | | ✓ |
 | `update_business_details`: name, description, phone, email, address | | ✓ |
 | `update_booking_rules` | | ✓ |
+
+A business with several locations needs a `location_id` (from `get_business_info`) to find
+free times and to book; agents should ask the customer which location they want. With one
+location it can be left out. Hours and closures tools take an optional `location_id` too.
 
 How close to an appointment customers can still move or cancel it is set in **Opening
 hours → Online booking → Customer changes** (2 hours by default, or "only the business").

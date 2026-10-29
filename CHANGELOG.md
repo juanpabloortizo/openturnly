@@ -6,6 +6,19 @@ All notable changes to OpenTurnly are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Locations**: a business can work from several locations (Administration → Locations),
+  each with its own address, phone, opening hours, closures, services and team. Someone
+  can work at several locations, with their own hours at each, and is never booked at two
+  at the same time. With more than one location the booking page starts with "Where would
+  you like your appointment?", and a link with `?local=<id>` goes straight to one. The
+  calendar filters by location and appointments can move between them. Existing businesses
+  get one location with their current hours, services, team and appointments.
+- **AI agents (MCP)**: `location_id` for finding times, booking, moving appointments, hours
+  and closures; `get_business_info` lists each location with its hours.
+- **Workflows**: `appointment.location` and `appointment.location_address` data.
+
 ## [1.1.0] - 2026-10-22
 
 ### Added
