@@ -17,6 +17,7 @@ import {
   Settings,
   TriangleAlert,
   Users,
+  Wallet,
   X,
 } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -172,6 +173,12 @@ function SidebarContent({ user, collapsed }: { user: User; collapsed: boolean })
                 label: t("nav.sales"),
                 icon: Receipt,
                 tour: "sales",
+              },
+              {
+                to: `${base}/cash`,
+                label: t("nav.cash"),
+                icon: Wallet,
+                tour: "cash",
               },
               {
                 to: `${base}/gift-cards`,

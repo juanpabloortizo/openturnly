@@ -3,6 +3,7 @@ import { and, count, eq, inArray, isNull, max } from "drizzle-orm";
 import { Hono } from "hono";
 import {
   appointments,
+  cashMovements,
   locationServices,
   locations,
   resourceLocations,
@@ -141,7 +142,12 @@ export function locationRoutes({ db }: Deps) {
         .select({ total: count() })
         .from(stockMovements)
         .where(eq(stockMovements.locationId, location.id));
-      if ((booked?.total ?? 0) + (sold?.total ?? 0) + (moved?.total ?? 0) > 0) {
+      const [cash] = await db
+        .select({ total: count() })
+        .from(cashMovements)
+        .where(eq(cashMovements.locationId, location.id));
+      const history = [booked, sold, moved, cash].reduce((sum, row) => sum + (row?.total ?? 0), 0);
+      if (history > 0) {
         throw apiError(409, "location_in_use");
       }
       await db.delete(locations).where(eq(locations.id, location.id));

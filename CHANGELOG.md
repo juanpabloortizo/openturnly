@@ -34,6 +34,12 @@ All notable changes to OpenTurnly are documented here. The format follows
   transfers between locations are recorded by hand; products sold at checkout leave stock
   and come back if the sale is voided. Every movement is listed with what it left, by
   period, location and type.
+- **Cash register**: per location and period, sales + deposits + internal sales + gift
+  cards + other income − expenses = the period's result, also split by payment method, with
+  the lines behind each figure and an Excel report. "Cash in the register" follows every
+  cash payment, deposit, income and expense; transfers take cash out (to the bank or another
+  location) and "Correct cash" records the difference after counting it. Sales charged from
+  the calendar land there on their own.
 - **AI agents (MCP)**: `location_id` for finding times, booking, moving appointments, hours
   and closures; `get_business_info` lists each location with its hours.
 - **Workflows**: `appointment.location` and `appointment.location_address` data.

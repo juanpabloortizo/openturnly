@@ -134,6 +134,13 @@
       "when": 1793315397026,
       "tag": "0018_inventory",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793315859659,
+      "tag": "0019_cash",
+      "breakpoints": true
     }
   ]
 }
