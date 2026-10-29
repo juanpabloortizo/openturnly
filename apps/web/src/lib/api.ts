@@ -98,6 +98,8 @@ export type Service = {
   durationMin: number;
   priceAmount: number | null;
   active: boolean;
+  /** Locations that offer it. */
+  locationIds: string[];
 };
 
 export type Professional = {
@@ -105,7 +107,22 @@ export type Professional = {
   name: string;
   active: boolean;
   serviceIds: string[];
+  /** Locations they work at. */
+  locationIds: string[];
   hasOwnHours: boolean;
+};
+
+/** A place the business works from, with what it offers and who works there. */
+export type Location = {
+  id: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  active: boolean;
+  serviceIds: string[];
+  resourceIds: string[];
+  /** Appointments booked there: a location with history can't be deleted. */
+  appointmentCount: number;
 };
 
 export type WeeklyRange = { weekday: number; start: string; end: string };
@@ -115,6 +132,8 @@ export type Closure = {
   id: string;
   date: string;
   endDate: string;
+  /** One location; null with no professional closes every location. */
+  locationId: string | null;
   resourceId: string | null;
   note: string | null;
 };
@@ -128,6 +147,8 @@ export type Appointment = {
   startsAt: string;
   endsAt: string;
   status: "confirmed" | "cancelled";
+  locationId: string | null;
+  locationName: string | null;
   serviceId: string | null;
   serviceName: string;
   resourceId: string | null;
@@ -172,8 +193,19 @@ export type PublicBusiness = Pick<
 
 export type PublicCatalog = {
   business: PublicBusiness;
-  services: Omit<Service, "active">[];
+  services: Omit<Service, "active" | "locationIds">[];
   professionals: { id: string; name: string; serviceIds: string[] }[];
+  /** Locations taking bookings, with what each offers and who works there. */
+  locations: PublicLocation[];
+};
+
+export type PublicLocation = {
+  id: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  serviceIds: string[];
+  professionalIds: string[];
 };
 
 export type BookedAppointment = {
@@ -188,6 +220,7 @@ export type BookedAppointment = {
   resourceName: string | null;
   priceAmount: number | null;
   currency: string;
+  location: { name: string; address: string | null };
 };
 
 /** A row of the customer list. */

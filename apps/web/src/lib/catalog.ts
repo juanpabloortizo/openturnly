@@ -1,17 +1,19 @@
 import type {
   ClosureInput,
+  LocationInput,
   ProfessionalInput,
   ServiceInput,
   StaffBookingInput,
   WeeklyHoursInput,
 } from "@openturnly/core";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type Appointment,
   api,
   type Closure,
   type CustomerSummary,
   type HolidaySettings,
+  type Location,
   type Professional,
   type Service,
   type WeeklyRange,
@@ -21,6 +23,7 @@ import {
 export function businessKeys(businessId: string) {
   const base = `/api/businesses/${businessId}`;
   const keys = {
+    locations: ["businesses", businessId, "locations"],
     services: ["businesses", businessId, "services"],
     professionals: ["businesses", businessId, "professionals"],
     hours: ["businesses", businessId, "hours"],
@@ -29,6 +32,39 @@ export function businessKeys(businessId: string) {
     holidays: ["businesses", businessId, "holidays"],
   } as const;
   return { base, keys };
+}
+
+export function useLocations(businessId: string) {
+  const { base, keys } = businessKeys(businessId);
+  return useQuery({
+    queryKey: keys.locations,
+    queryFn: async () => (await api<{ locations: Location[] }>(`${base}/locations`)).locations,
+  });
+}
+
+export function useLocationMutations(businessId: string) {
+  const { base, keys } = businessKeys(businessId);
+  const queryClient = useQueryClient();
+  // Locations change what services and professionals show, and the hours they have.
+  const onSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: keys.locations });
+    queryClient.invalidateQueries({ queryKey: keys.services });
+    queryClient.invalidateQueries({ queryKey: keys.professionals });
+    queryClient.invalidateQueries({ queryKey: keys.hours });
+  };
+  return {
+    save: useMutation({
+      mutationFn: ({ id, input }: { id?: string; input: LocationInput }) =>
+        id
+          ? api(`${base}/locations/${id}`, { method: "PATCH", body: input })
+          : api(`${base}/locations`, { method: "POST", body: input }),
+      onSuccess,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api(`${base}/locations/${id}`, { method: "DELETE" }),
+      onSuccess,
+    }),
+  };
 }
 
 export function useServices(businessId: string) {
@@ -45,6 +81,7 @@ export function useServiceMutations(businessId: string) {
   const onSuccess = () => {
     queryClient.invalidateQueries({ queryKey: keys.services });
     queryClient.invalidateQueries({ queryKey: keys.professionals });
+    queryClient.invalidateQueries({ queryKey: keys.locations });
   };
   return {
     save: useMutation({
@@ -76,9 +113,13 @@ export function useProfessionalMutations(businessId: string) {
   const onSuccess = () => {
     queryClient.invalidateQueries({ queryKey: keys.professionals });
     queryClient.invalidateQueries({ queryKey: keys.hours });
+    queryClient.invalidateQueries({ queryKey: keys.locations });
   };
   return {
-    /** Saves the professional, then their hours (empty list = business hours). */
+    /**
+     * Saves the professional, then their hours at each location they work at (an empty
+     * list follows the location's hours).
+     */
     save: useMutation({
       mutationFn: async ({
         id,
@@ -87,7 +128,7 @@ export function useProfessionalMutations(businessId: string) {
       }: {
         id?: string;
         input: ProfessionalInput;
-        hours: WeeklyRange[];
+        hours: Record<string, WeeklyRange[]>;
       }) => {
         const { professional } = id
           ? await api<{ professional: { id: string } }>(`${base}/professionals/${id}`, {
@@ -98,8 +139,10 @@ export function useProfessionalMutations(businessId: string) {
               method: "POST",
               body: input,
             });
-        const body: WeeklyHoursInput = { resourceId: professional.id, hours };
-        await api(`${base}/hours`, { method: "PUT", body });
+        for (const [locationId, ranges] of Object.entries(hours)) {
+          const body: WeeklyHoursInput = { locationId, resourceId: professional.id, hours: ranges };
+          await api(`${base}/hours`, { method: "PUT", body });
+        }
         return professional;
       },
       onSuccess,
@@ -111,14 +154,42 @@ export function useProfessionalMutations(businessId: string) {
   };
 }
 
-export function useHours(businessId: string) {
+export type LocationHours = {
+  locationId: string;
+  /** The location's own hours. */
+  business: WeeklyRange[];
+  /** Professionals with their own hours there. */
+  professionals: Record<string, WeeklyRange[]>;
+};
+
+const hoursQuery = (businessId: string, locationId: string | null) => {
   const { base, keys } = businessKeys(businessId);
-  return useQuery({
-    queryKey: keys.hours,
+  return {
+    queryKey: [...keys.hours, locationId],
     queryFn: () =>
-      api<{ business: WeeklyRange[]; professionals: Record<string, WeeklyRange[]> }>(
-        `${base}/hours`,
+      api<LocationHours>(
+        `${base}/hours${locationId ? `?locationId=${encodeURIComponent(locationId)}` : ""}`,
       ),
+  };
+};
+
+/** A location's hours; without one, the first location's. */
+export function useHours(businessId: string, locationId: string | null = null) {
+  return useQuery(hoursQuery(businessId, locationId));
+}
+
+/** The hours at several locations, keyed by location, once all have loaded. */
+export function useHoursAt(businessId: string, locationIds: string[]) {
+  return useQueries({
+    queries: locationIds.map((locationId) => hoursQuery(businessId, locationId)),
+    combine: (results): Record<string, LocationHours> | null => {
+      const byLocation: Record<string, LocationHours> = {};
+      for (const result of results) {
+        if (!result.data) return null;
+        byLocation[result.data.locationId] = result.data;
+      }
+      return byLocation;
+    },
   });
 }
 
@@ -172,16 +243,25 @@ export function useAppointments(
   });
 }
 
-/** Free times on `date` for a new appointment, with who is free at each. */
-export function useNewAppointmentSlots(businessId: string, serviceId: string | null, date: string) {
+/** Free times on `date` for a new appointment at a location, with who is free at each. */
+export function useNewAppointmentSlots(
+  businessId: string,
+  locationId: string | null,
+  serviceId: string | null,
+  date: string,
+) {
   const { base, keys } = businessKeys(businessId);
   return useQuery({
-    queryKey: [...keys.appointments, "slots", serviceId, date],
-    enabled: serviceId !== null,
+    queryKey: [...keys.appointments, "slots", locationId, serviceId, date],
+    enabled: serviceId !== null && locationId !== null,
     queryFn: async () =>
       (
         await api<{ slots: { time: string; resourceIds: string[] }[] }>(
-          `${base}/appointments/slots?serviceId=${serviceId}&date=${date}`,
+          `${base}/appointments/slots?${new URLSearchParams({
+            locationId: locationId ?? "",
+            serviceId: serviceId ?? "",
+            date,
+          })}`,
         )
       ).slots,
   });
@@ -218,17 +298,22 @@ export function useCustomerSearch(businessId: string, query: string) {
 export function useAppointmentSlots(
   businessId: string,
   appointmentId: string,
+  locationId: string | null,
   serviceId: string | null,
   date: string,
 ) {
   const { base, keys } = businessKeys(businessId);
   return useQuery({
-    queryKey: [...keys.appointments, appointmentId, "slots", serviceId, date],
+    queryKey: [...keys.appointments, appointmentId, "slots", locationId, serviceId, date],
     enabled: serviceId !== null,
     queryFn: async () =>
       (
         await api<{ slots: { time: string; resourceIds: string[] }[] }>(
-          `${base}/appointments/${appointmentId}/slots?serviceId=${serviceId}&date=${date}`,
+          `${base}/appointments/${appointmentId}/slots?${new URLSearchParams({
+            ...(locationId ? { locationId } : {}),
+            serviceId: serviceId ?? "",
+            date,
+          })}`,
         )
       ).slots,
   });
@@ -243,6 +328,7 @@ export function useRescheduleAppointment(businessId: string) {
       ...body
     }: {
       id: string;
+      locationId?: string;
       serviceId: string;
       resourceId: string | null;
       date: string;

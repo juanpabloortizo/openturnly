@@ -118,6 +118,8 @@ export function sampleValues(business: Business, event: string, language: string
       service: "Corte clásico",
       duration_minutes: 30,
       professional: "Juan",
+      location: business.name,
+      location_address: business.address,
       price: 18000,
       price_text: "$ 18.000",
       booked_via: "online",

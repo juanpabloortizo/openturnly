@@ -97,6 +97,9 @@ updates, read the [self-hosting guide](docs/self-hosting.md), or follow the
 - **Calendar** with day, week, month and list views, booking and moving appointments,
   and Excel/CSV export.
 - **Customers** with their history, notes and duplicate merging.
+- **Locations**: one business, several branches, each with its own address, hours,
+  services and team. Staff can work at several locations and are never booked at two at
+  once.
 - **Services, staff and hours**: split shifts, closures, automatic public holidays per
   country and booking rules, all time-zone aware.
 - **Team access** with admin and professional roles, and a branded sign-in page per business.

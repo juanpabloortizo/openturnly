@@ -345,6 +345,8 @@ export const serviceSchema = z.object({
   /** Always shown on the booking page; 0 for free services. */
   priceAmount: z.number().int().min(0).max(1e12),
   active: z.boolean().default(true),
+  /** Where it is offered. Left out when creating: every location. */
+  locationIds: z.array(z.string().min(1)).max(200).optional(),
 });
 export type ServiceInput = z.infer<typeof serviceSchema>;
 
@@ -352,8 +354,21 @@ export const professionalSchema = z.object({
   name: z.string().trim().min(1).max(120),
   active: z.boolean().default(true),
   serviceIds: z.array(z.string().min(1)).max(500),
+  /** Where they work. Left out when creating: every location. */
+  locationIds: z.array(z.string().min(1)).max(200).optional(),
 });
 export type ProfessionalInput = z.infer<typeof professionalSchema>;
+
+/** A location of the business, with the services it offers and the people who work there. */
+export const locationSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  address: optionalText(300),
+  phone: optionalText(40),
+  active: z.boolean().default(true),
+  serviceIds: z.array(z.string().min(1)).max(500),
+  resourceIds: z.array(z.string().min(1)).max(500),
+});
+export type LocationInput = z.infer<typeof locationSchema>;
 
 // --- Opening hours ---------------------------------------------------------
 
@@ -367,10 +382,12 @@ export const weeklyRangeSchema = z.object({
 });
 
 /**
- * Replaces the weekly hours of the business (`resourceId: null`) or of one professional.
- * An empty list for a professional means "use the business hours".
+ * Replaces the weekly hours of a location (`resourceId: null`) or of one professional at
+ * that location. An empty list for a professional means "use the location's hours".
+ * Without `locationId`, the business's first location.
  */
 export const weeklyHoursSchema = z.object({
+  locationId: z.string().min(1).optional(),
   resourceId: z.string().min(1).nullable(),
   hours: z
     .array(weeklyRangeSchema)
@@ -389,12 +406,14 @@ export const MAX_CLOSURE_DAYS = 366;
 
 /**
  * Days without bookings, from `date` to `endDate` (inclusive; one day when left out), for
- * the whole business (`resourceId: null`) or one professional.
+ * one professional wherever they work, or else one location (`locationId`) or every
+ * location (both null).
  */
 export const closureSchema = z
   .object({
     date: calendarDate,
     endDate: calendarDate.optional(),
+    locationId: z.string().min(1).nullable().default(null),
     resourceId: z.string().min(1).nullable(),
     note: optionalText(120),
   })
@@ -476,6 +495,8 @@ export const customerPatchSchema = customerFields.partial();
  */
 export const staffBookingSchema = z
   .object({
+    /** Needed when the business has more than one active location. */
+    locationId: z.string().min(1).optional(),
     serviceId: z.string().min(1),
     /** A professional, or null for whoever is free. */
     resourceId: z.string().min(1).nullable(),
@@ -541,6 +562,8 @@ export function bookingDetailsSchema(form: BookingForm, country?: string | null)
 export type BookingDetails = z.output<ReturnType<typeof bookingDetailsSchema>>;
 
 export const bookingSchema = z.object({
+  /** Needed when the business has more than one active location. */
+  locationId: z.string().min(1).optional(),
   serviceId: z.string().min(1),
   /** A professional, or null for "anyone available" (or a business without professionals). */
   resourceId: z.string().min(1).nullable(),
@@ -620,6 +643,8 @@ export const AUTOMATION_FIELDS = {
     "appointment.service",
     "appointment.duration_minutes",
     "appointment.professional",
+    "appointment.location",
+    "appointment.location_address",
     "appointment.price",
     "appointment.price_text",
     "appointment.booked_via",
@@ -998,6 +1023,7 @@ export const TOURS = [
   "customers",
   "services",
   "professionals",
+  "locations",
   "hours",
   "settings",
 ] as const;

@@ -1,11 +1,13 @@
 import { addDays, type BookingRules, type ResourceSchedule } from "@openturnly/core";
-import { and, eq, gt, gte, inArray, isNull, lt, lte, ne, or } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, lt, lte, ne } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import {
   appointments,
   type Business,
   closures,
   holidayOverrides,
+  locationServices,
+  resourceLocations,
   resourceServices,
   resources,
   weeklyHours,
@@ -25,13 +27,16 @@ export function bookingRules(business: Business): BookingRules {
 }
 
 /**
- * Builds the schedules the availability engine needs for one service between two dates.
- * With `resourceId` null it includes every professional offering the service ("anyone").
- * A business without professionals gets one schedule (`resourceId: null`) on its own hours.
+ * Builds the schedules the availability engine needs for one service at one location
+ * between two dates. With `resourceId` null it includes everyone at the location offering
+ * the service ("anyone"). A location without professionals gets one schedule
+ * (`resourceId: null`) on its own hours. Professionals are busy with their appointments
+ * at every location, so nobody is booked in two places at once.
  */
 export async function loadSchedules(
   db: Queryable,
   business: Business,
+  locationId: string,
   serviceId: string,
   resourceId: string | null,
   fromDate: string,
@@ -39,13 +44,28 @@ export async function loadSchedules(
   /** An appointment being moved: its own time doesn't count as busy. */
   ignoreAppointmentId?: string,
 ): Promise<ResourceSchedule[]> {
-  const activeResources = await db
+  const [offeredHere] = await db
+    .select({ id: locationServices.serviceId })
+    .from(locationServices)
+    .where(
+      and(eq(locationServices.locationId, locationId), eq(locationServices.serviceId, serviceId)),
+    );
+  if (!offeredHere) return [];
+
+  const team = await db
     .select({ id: resources.id })
     .from(resources)
-    .where(and(eq(resources.businessId, business.id), eq(resources.active, true)));
+    .innerJoin(resourceLocations, eq(resourceLocations.resourceId, resources.id))
+    .where(
+      and(
+        eq(resources.businessId, business.id),
+        eq(resources.active, true),
+        eq(resourceLocations.locationId, locationId),
+      ),
+    );
 
   let candidates: (string | null)[];
-  if (activeResources.length === 0) {
+  if (team.length === 0) {
     candidates = resourceId === null ? [null] : [];
   } else {
     const offering = (
@@ -57,7 +77,7 @@ export async function loadSchedules(
             eq(resourceServices.serviceId, serviceId),
             inArray(
               resourceServices.resourceId,
-              activeResources.map((resource) => resource.id),
+              team.map((resource) => resource.id),
             ),
           ),
         )
@@ -66,12 +86,20 @@ export async function loadSchedules(
   }
   if (candidates.length === 0) return [];
 
-  const hours = await db.select().from(weeklyHours).where(eq(weeklyHours.businessId, business.id));
-  const businessHours = hours.filter((range) => range.resourceId === null);
+  const hours = await db
+    .select()
+    .from(weeklyHours)
+    .where(and(eq(weeklyHours.businessId, business.id), eq(weeklyHours.locationId, locationId)));
+  const locationHours = hours.filter((range) => range.resourceId === null);
 
   const closedRows = (
     await db
-      .select({ date: closures.date, endDate: closures.endDate, resourceId: closures.resourceId })
+      .select({
+        date: closures.date,
+        endDate: closures.endDate,
+        locationId: closures.locationId,
+        resourceId: closures.resourceId,
+      })
       .from(closures)
       .where(
         and(
@@ -80,15 +108,24 @@ export async function loadSchedules(
           lte(closures.date, toDate),
         ),
       )
-  ).flatMap((row) => {
-    // One entry per closed day inside the requested window.
-    const days: { date: string; resourceId: string | null }[] = [];
-    const last = row.endDate < toDate ? row.endDate : toDate;
-    for (let day = row.date < fromDate ? fromDate : row.date; day <= last; day = addDays(day, 1)) {
-      days.push({ date: day, resourceId: row.resourceId });
-    }
-    return days;
-  });
+  )
+    // Another location's closure doesn't close this one.
+    .filter(
+      (row) => row.resourceId !== null || row.locationId === null || row.locationId === locationId,
+    )
+    .flatMap((row) => {
+      // One entry per closed day inside the requested window.
+      const days: { date: string; resourceId: string | null }[] = [];
+      const last = row.endDate < toDate ? row.endDate : toDate;
+      for (
+        let day = row.date < fromDate ? fromDate : row.date;
+        day <= last;
+        day = addDays(day, 1)
+      ) {
+        days.push({ date: day, resourceId: row.resourceId });
+      }
+      return days;
+    });
 
   const overrides = await db
     .select({ date: holidayOverrides.date })
@@ -110,8 +147,10 @@ export async function loadSchedules(
   // Wide window on purpose: time zones can shift a date by up to a day either way.
   const windowStart = new Date(`${addDays(fromDate, -1)}T00:00:00Z`);
   const windowEnd = new Date(`${addDays(toDate, 2)}T00:00:00Z`);
+  const people = candidates.filter((candidate): candidate is string => candidate !== null);
   const booked = await db
     .select({
+      locationId: appointments.locationId,
       resourceId: appointments.resourceId,
       start: appointments.startsAt,
       end: appointments.endsAt,
@@ -124,12 +163,9 @@ export async function loadSchedules(
         lt(appointments.startsAt, windowEnd),
         gt(appointments.endsAt, windowStart),
         ignoreAppointmentId ? ne(appointments.id, ignoreAppointmentId) : undefined,
-        candidates.includes(null)
-          ? undefined
-          : or(
-              isNull(appointments.resourceId),
-              inArray(appointments.resourceId, candidates as string[]),
-            ),
+        people.length === candidates.length
+          ? inArray(appointments.resourceId, people)
+          : eq(appointments.locationId, locationId),
       ),
     );
 
@@ -137,7 +173,7 @@ export async function loadSchedules(
     const own = hours.filter((range) => candidate !== null && range.resourceId === candidate);
     return {
       resourceId: candidate,
-      hours: own.length > 0 ? own : businessHours,
+      hours: own.length > 0 ? own : locationHours,
       closedDates: new Set([
         ...holidays,
         ...closedRows
@@ -145,7 +181,10 @@ export async function loadSchedules(
           .map((row) => row.date),
       ]),
       busy: booked
-        .filter((row) => candidate === null || row.resourceId === candidate)
+        // Without professionals the location takes one appointment at a time.
+        .filter((row) =>
+          candidate === null ? row.locationId === locationId : row.resourceId === candidate,
+        )
         .map((row) => ({ start: row.start.getTime(), end: row.end.getTime() })),
     };
   });

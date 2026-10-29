@@ -16,6 +16,7 @@ import {
   useClosures,
   useHolidays,
   useHours,
+  useLocations,
   useProfessionals,
   useSaveHours,
   useServices,
@@ -59,6 +60,10 @@ function daysBetween(start: string, end: string) {
 export function HoursPage() {
   const { t } = useTranslation();
   const [tab, setTab] = useTab(TABS);
+  const { business } = useBusinessContext();
+  const locations = useLocations(business.id).data ?? [];
+  const [picked, setPicked] = useState<string | null>(null);
+  const locationId = picked ?? locations[0]?.id ?? null;
   return (
     <>
       <PageHeader title={t("hours.title")} subtitle={t("hours.subtitle")} />
@@ -73,7 +78,30 @@ export function HoursPage() {
           { value: "rules", label: t("hours.tabs.rules") },
         ]}
       />
-      {tab === "weekly" && <OpeningHours />}
+      {tab === "weekly" && (
+        <div className="space-y-4">
+          {locations.length > 1 && locationId && (
+            <div className="max-w-xs">
+              <Field label={t("locations.pick")}>
+                {(props) => (
+                  <Select
+                    {...props}
+                    value={locationId}
+                    onChange={(event) => setPicked(event.target.value)}
+                  >
+                    {locations.map((location) => (
+                      <option key={location.id} value={location.id}>
+                        {location.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            </div>
+          )}
+          {locationId && <OpeningHours key={locationId} locationId={locationId} />}
+        </div>
+      )}
       {tab === "holidays" && <Holidays />}
       {tab === "closures" && <Closures />}
       {tab === "rules" && <BookingRules />}
@@ -81,10 +109,10 @@ export function HoursPage() {
   );
 }
 
-function OpeningHours() {
+function OpeningHours({ locationId }: { locationId: string }) {
   const { t } = useTranslation();
   const { business } = useBusinessContext();
-  const hours = useHours(business.id);
+  const hours = useHours(business.id, locationId);
   const save = useSaveHours(business.id);
   const [value, setValue] = useState<WeeklyRange[] | null>(null);
 
@@ -108,7 +136,7 @@ function OpeningHours() {
           onClick={() =>
             value &&
             save.mutate(
-              { resourceId: null, hours: value },
+              { locationId, resourceId: null, hours: value },
               {
                 onSuccess: () => toast.success(t("common.saved")),
                 onError: (error) =>
@@ -471,8 +499,11 @@ function Closures() {
   const { list, add, remove } = useClosures(business.id);
   const holidays = useHolidays(business.id, language === "en" ? "en" : "es");
   const professionals = useProfessionals(business.id);
+  const locations = useLocations(business.id).data ?? [];
+  const severalLocations = locations.length > 1;
   const [range, setRange] = useState<DateRange | null>(null);
-  const [resourceId, setResourceId] = useState("");
+  // "" closes everything, "location:<id>" one location, "<id>" one professional.
+  const [who, setWho] = useState("");
   const [note, setNote] = useState("");
   const today = todayIn(business.timezone);
 
@@ -493,10 +524,12 @@ function Closures() {
       toast.error(t("hours.pickDatesFirst"));
       return;
     }
+    const location = who.startsWith("location:") ? who.slice("location:".length) : null;
     const result = validate(closureSchema, {
       date: range.start,
       endDate: range.end ?? range.start,
-      resourceId: resourceId || null,
+      locationId: location,
+      resourceId: who && !location ? who : null,
       note,
     });
     if (!result.data) {
@@ -513,10 +546,14 @@ function Closures() {
     });
   };
 
-  const nameOf = (id: string | null) =>
-    id === null
-      ? t("hours.wholeBusiness")
-      : (professionals.data?.find((professional) => professional.id === id)?.name ?? "—");
+  const everything = severalLocations ? t("hours.allLocations") : t("hours.wholeBusiness");
+  const nameOf = (closure: Closure) =>
+    closure.resourceId !== null
+      ? (professionals.data?.find((professional) => professional.id === closure.resourceId)?.name ??
+        "—")
+      : closure.locationId !== null
+        ? (locations.find((location) => location.id === closure.locationId)?.name ?? "—")
+        : everything;
 
   const removeClosure = async (closure: Closure) => {
     const ok = await confirm({
@@ -549,7 +586,7 @@ function Closures() {
     {
       key: "who",
       header: t("hours.who"),
-      cell: (closure) => <span className="text-zinc-600">{nameOf(closure.resourceId)}</span>,
+      cell: (closure) => <span className="text-zinc-600">{nameOf(closure)}</span>,
     },
     {
       key: "reason",
@@ -628,17 +665,26 @@ function Closures() {
             </p>
             <Field label={t("hours.who")}>
               {(props) => (
-                <Select
-                  {...props}
-                  value={resourceId}
-                  onChange={(event) => setResourceId(event.target.value)}
-                >
-                  <option value="">{t("hours.wholeBusiness")}</option>
-                  {professionals.data?.map((professional) => (
-                    <option key={professional.id} value={professional.id}>
-                      {professional.name}
-                    </option>
-                  ))}
+                <Select {...props} value={who} onChange={(event) => setWho(event.target.value)}>
+                  <option value="">{everything}</option>
+                  {severalLocations && (
+                    <optgroup label={t("nav.locations")}>
+                      {locations.map((location) => (
+                        <option key={location.id} value={`location:${location.id}`}>
+                          {location.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {(professionals.data?.length ?? 0) > 0 && (
+                    <optgroup label={t("nav.professionals")}>
+                      {professionals.data?.map((professional) => (
+                        <option key={professional.id} value={professional.id}>
+                          {professional.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </Select>
               )}
             </Field>

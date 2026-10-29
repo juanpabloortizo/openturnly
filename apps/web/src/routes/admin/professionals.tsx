@@ -12,7 +12,9 @@ import { Alert, Badge, Button, Field, Input, Spinner } from "../../components/ui
 import { WeeklyHoursEditor } from "../../components/weekly-hours.tsx";
 import type { Professional, WeeklyRange } from "../../lib/api.ts";
 import {
-  useHours,
+  type LocationHours,
+  useHoursAt,
+  useLocations,
   useProfessionalMutations,
   useProfessionals,
   useServices,
@@ -26,11 +28,14 @@ export function ProfessionalsPage() {
   const { business } = useBusinessContext();
   const professionals = useProfessionals(business.id);
   const services = useServices(business.id);
-  // The form starts from the current hours, so wait for them before opening it.
-  const hours = useHours(business.id);
+  const locations = useLocations(business.id);
+  // The form starts from the current hours at each location, so wait for them.
+  const hours = useHoursAt(business.id, locations.data?.map((location) => location.id) ?? []);
   const [editing, setEditing] = useState<Professional | "new" | null>(null);
 
   const serviceNames = new Map(services.data?.map((service) => [service.id, service.name]));
+  const locationNames = new Map(locations.data?.map((location) => [location.id, location.name]));
+  const severalLocations = (locations.data?.length ?? 0) > 1;
 
   const newButton = (
     <Button data-tour="professionals-new" onClick={() => setEditing("new")}>
@@ -64,6 +69,25 @@ export function ProfessionalsPage() {
         );
       },
     },
+    ...(severalLocations
+      ? [
+          {
+            key: "locations",
+            header: t("professionals.colLocations"),
+            className: "hidden lg:table-cell",
+            cell: (professional: Professional) => {
+              const names = professional.locationIds
+                .map((id) => locationNames.get(id))
+                .filter((name): name is string => Boolean(name));
+              return (
+                <span className="block max-w-xs truncate text-zinc-600" title={names.join(", ")}>
+                  {names.join(", ") || "—"}
+                </span>
+              );
+            },
+          },
+        ]
+      : []),
     {
       key: "hours",
       header: t("professionals.colHours"),
@@ -127,9 +151,10 @@ export function ProfessionalsPage() {
           empty={t("professionals.emptyTitle")}
         />
       )}
-      {editing && services.data && hours.data && (
+      {editing && services.data && locations.data && hours && (
         <ProfessionalForm
           professional={editing === "new" ? null : editing}
+          hours={hours}
           onClose={() => setEditing(null)}
         />
       )}
@@ -139,15 +164,19 @@ export function ProfessionalsPage() {
 
 function ProfessionalForm({
   professional,
+  hours,
   onClose,
 }: {
   professional: Professional | null;
+  /** Hours at every location of the business. */
+  hours: Record<string, LocationHours>;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
   const { business } = useBusinessContext();
   const services = useServices(business.id);
-  const hours = useHours(business.id);
+  const locations = useLocations(business.id).data ?? [];
+  const severalLocations = locations.length > 1;
   const { save, remove } = useProfessionalMutations(business.id);
   const confirm = useConfirm();
 
@@ -156,21 +185,43 @@ function ProfessionalForm({
   const [serviceIds, setServiceIds] = useState<string[]>(
     professional?.serviceIds ?? services.data?.map((service) => service.id) ?? [],
   );
-  const ownHours = professional ? (hours.data?.professionals[professional.id] ?? []) : [];
-  const [customHours, setCustomHours] = useState(ownHours.length > 0);
-  const [weekly, setWeekly] = useState<WeeklyRange[]>(
-    ownHours.length > 0 ? ownHours : (hours.data?.business ?? []),
+  const [locationIds, setLocationIds] = useState<string[]>(
+    professional?.locationIds ?? locations.map((location) => location.id),
+  );
+  /** Their own hours at a location, or none when they follow the location's. */
+  const ownAt = (locationId: string) =>
+    (professional && hours[locationId]?.professionals[professional.id]) || [];
+  const [customHours, setCustomHours] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(locations.map((location) => [location.id, ownAt(location.id).length > 0])),
+  );
+  const [weekly, setWeekly] = useState<Record<string, WeeklyRange[]>>(() =>
+    Object.fromEntries(
+      locations.map((location) => {
+        const own = ownAt(location.id);
+        return [location.id, own.length > 0 ? own : (hours[location.id]?.business ?? [])];
+      }),
+    ),
   );
   const [errors, setErrors] = useState<FieldErrors>({});
+  const workplaces = locations.filter((location) => locationIds.includes(location.id));
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const values: ProfessionalInput = { name, active, serviceIds };
+    const values: ProfessionalInput = { name, active, serviceIds, locationIds };
     const result = validate(professionalSchema, values);
     setErrors(result.errors ?? {});
     if (!result.data) return;
     save.mutate(
-      { id: professional?.id, input: result.data, hours: customHours ? weekly : [] },
+      {
+        id: professional?.id,
+        input: result.data,
+        hours: Object.fromEntries(
+          workplaces.map((location) => [
+            location.id,
+            customHours[location.id] ? (weekly[location.id] ?? []) : [],
+          ]),
+        ),
+      },
       {
         onSuccess: () => {
           toast.success(professional ? t("common.saved") : t("professionals.created"));
@@ -261,16 +312,51 @@ function ProfessionalForm({
           )}
         </fieldset>
 
-        <div className="divide-y divide-zinc-100 border-t border-zinc-100">
-          <div className="space-y-3 py-4">
-            <Switch
-              checked={customHours}
-              onChange={setCustomHours}
-              label={t("professionals.customHours")}
-              description={t("professionals.customHoursHint")}
+        {severalLocations && (
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium text-zinc-800">
+              {t("professionals.locationsLabel")}
+            </legend>
+            <Checklist
+              label={t("professionals.locationsLabel")}
+              value={locationIds}
+              onChange={setLocationIds}
+              items={locations.map((location) => ({
+                id: location.id,
+                label: location.name,
+                detail: location.address ?? undefined,
+              }))}
             />
-            {customHours && <WeeklyHoursEditor value={weekly} onChange={setWeekly} />}
-          </div>
+          </fieldset>
+        )}
+
+        <div className="divide-y divide-zinc-100 border-t border-zinc-100">
+          {workplaces.map((location) => (
+            <div key={location.id} className="space-y-3 py-4">
+              <Switch
+                checked={customHours[location.id] ?? false}
+                onChange={(on) => setCustomHours((current) => ({ ...current, [location.id]: on }))}
+                label={
+                  severalLocations
+                    ? t("professionals.ownHoursAt", { name: location.name })
+                    : t("professionals.customHours")
+                }
+                description={
+                  severalLocations
+                    ? t("professionals.ownHoursAtHint")
+                    : t("professionals.customHoursHint")
+                }
+              />
+              {customHours[location.id] && (
+                <WeeklyHoursEditor
+                  value={weekly[location.id] ?? []}
+                  onChange={(value) =>
+                    setWeekly((current) => ({ ...current, [location.id]: value }))
+                  }
+                />
+              )}
+            </div>
+          ))}
           <div className="pt-4">
             <Switch
               checked={active}

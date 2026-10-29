@@ -15,6 +15,8 @@ import {
   appointments,
   type Business,
   businesses,
+  locationServices,
+  resourceLocations,
   resourceServices,
   resources,
   services,
@@ -26,6 +28,7 @@ import { matchCustomer, saveBookingCustomer } from "../lib/customers.ts";
 import { businessCountry } from "../lib/holidays.ts";
 import { type AppEnv, apiError, type Deps, parseBody, validateWith } from "../lib/http.ts";
 import { findImage, imageUrls } from "../lib/images.ts";
+import { listLocations, resolveLocation } from "../lib/locations.ts";
 import { bookingRules, loadSchedules, pickLeastBusy } from "../lib/schedules.ts";
 
 /** Longest range the booking calendar can ask for at once. */
@@ -58,51 +61,89 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
     return business;
   };
 
-  /** Active services and professionals, keeping only services someone can actually do. */
+  /**
+   * Active locations with the services each can actually take bookings for and who works
+   * there, and the services and professionals across them. A location without
+   * professionals takes bookings on its own hours for every service it offers.
+   */
   const loadCatalog = async (business: Business) => {
+    const places = (await listLocations(db, business.id)).filter((place) => place.active);
     const team = await db
       .select({ id: resources.id, name: resources.name })
       .from(resources)
       .where(and(eq(resources.businessId, business.id), eq(resources.active, true)))
       .orderBy(asc(resources.position), asc(resources.name));
-    const links =
+    const teamIds = new Set(team.map((member) => member.id));
+    const placeIds = places.map((place) => place.id);
+    const [links, staffed, offered] = await Promise.all([
       team.length > 0
-        ? await db
+        ? db
             .select()
             .from(resourceServices)
-            .where(
-              inArray(
-                resourceServices.resourceId,
-                team.map((member) => member.id),
-              ),
-            )
-        : [];
-    const offered = new Set(links.map((link) => link.serviceId));
-    const catalog = (
-      await db
-        .select({
-          id: services.id,
-          name: services.name,
-          description: services.description,
-          durationMin: services.durationMin,
-          priceAmount: services.priceAmount,
-        })
-        .from(services)
-        .where(and(eq(services.businessId, business.id), eq(services.active, true)))
-        .orderBy(asc(services.position), asc(services.name))
-    ).filter((service) => team.length === 0 || offered.has(service.id));
-    const bookable = new Set(catalog.map((service) => service.id));
+            .where(inArray(resourceServices.resourceId, [...teamIds]))
+        : [],
+      placeIds.length > 0
+        ? db.select().from(resourceLocations).where(inArray(resourceLocations.locationId, placeIds))
+        : [],
+      placeIds.length > 0
+        ? db.select().from(locationServices).where(inArray(locationServices.locationId, placeIds))
+        : [],
+    ]);
+    const catalog = await db
+      .select({
+        id: services.id,
+        name: services.name,
+        description: services.description,
+        durationMin: services.durationMin,
+        priceAmount: services.priceAmount,
+      })
+      .from(services)
+      .where(and(eq(services.businessId, business.id), eq(services.active, true)))
+      .orderBy(asc(services.position), asc(services.name));
+
+    const doing = (resourceId: string, serviceId: string) =>
+      links.some((link) => link.resourceId === resourceId && link.serviceId === serviceId);
+    const bookableLocations = places
+      .map((place) => {
+        const here = staffed
+          .filter((link) => link.locationId === place.id && teamIds.has(link.resourceId))
+          .map((link) => link.resourceId);
+        const serviceIds = catalog
+          .filter(
+            (service) =>
+              offered.some(
+                (link) => link.locationId === place.id && link.serviceId === service.id,
+              ) &&
+              (here.length === 0 || here.some((resourceId) => doing(resourceId, service.id))),
+          )
+          .map((service) => service.id);
+        return {
+          id: place.id,
+          name: place.name,
+          address: place.address,
+          phone: place.phone,
+          serviceIds,
+          professionalIds: here.filter((resourceId) =>
+            serviceIds.some((serviceId) => doing(resourceId, serviceId)),
+          ),
+        };
+      })
+      // A location with nothing bookable would lead customers to an empty list.
+      .filter((place) => place.serviceIds.length > 0);
+
+    const bookable = new Set(bookableLocations.flatMap((place) => place.serviceIds));
+    const working = new Set(bookableLocations.flatMap((place) => place.professionalIds));
     return {
-      services: catalog,
-      // Someone with nothing bookable would lead customers to an empty list.
+      locations: bookableLocations,
+      services: catalog.filter((service) => bookable.has(service.id)),
       professionals: team
+        .filter((member) => working.has(member.id))
         .map((member) => ({
           ...member,
           serviceIds: links
             .filter((link) => link.resourceId === member.id && bookable.has(link.serviceId))
             .map((link) => link.serviceId),
-        }))
-        .filter((member) => member.serviceIds.length > 0),
+        })),
     };
   };
 
@@ -182,15 +223,17 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
         if (!(await agentKey(c, business)) && !guard.allow.availability(network(c))) {
           throw apiError(429, "too_many_requests");
         }
-        const { serviceId = "", resourceId, from = "", to = "" } = c.req.query();
+        const { serviceId = "", resourceId, locationId, from = "", to = "" } = c.req.query();
         if (!isDateString(from) || !isDateString(to) || to < from) {
           throw apiError(400, "invalid_range");
         }
         if (to > addDays(from, MAX_AVAILABILITY_DAYS)) throw apiError(400, "invalid_range");
+        const location = await resolveLocation(db, business.id, locationId, { forBooking: true });
         const service = await findActiveService(business, serviceId);
         const schedules = await loadSchedules(
           db,
           business,
+          location.id,
           service.id,
           resourceId || null,
           from,
@@ -246,6 +289,9 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
             throw apiError(429, "too_many_requests");
           }
         }
+        const location = await resolveLocation(db, business.id, input.locationId, {
+          forBooking: true,
+        });
         const service = await findActiveService(business, input.serviceId);
         const now = Date.now();
         const startsAt = zonedTimeToInstant(input.date, parseTime(input.time), business.timezone);
@@ -292,6 +338,7 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
           const schedules = await loadSchedules(
             tx,
             business,
+            location.id,
             service.id,
             input.resourceId,
             input.date,
@@ -321,6 +368,7 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
             .values({
               code: await newBookingCode(tx),
               businessId: business.id,
+              locationId: location.id,
               serviceId: service.id,
               resourceId,
               customerId,
@@ -353,6 +401,7 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
               resourceName: appointment.resourceName,
               priceAmount: appointment.priceAmount,
               currency: business.currency,
+              location: { name: location.name, address: location.address },
             },
           },
           201,

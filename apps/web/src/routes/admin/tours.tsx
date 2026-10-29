@@ -13,12 +13,20 @@ const SECTIONS: Record<string, TourName> = {
   customers: "customers",
   services: "services",
   professionals: "professionals",
+  locations: "locations",
   hours: "hours",
   settings: "settings",
 };
 
 /** The sections the welcome tour walks through, for people who manage the business. */
-const MANAGED = ["customers", "services", "professionals", "hours", "settings"] as const;
+const MANAGED = [
+  "customers",
+  "services",
+  "professionals",
+  "locations",
+  "hours",
+  "settings",
+] as const;
 
 function stepsOf(
   t: TFunction,
@@ -75,6 +83,7 @@ function stepsOf(
       }));
     case "services":
     case "professionals":
+    case "locations":
       return [
         {
           target: `${tour}-new`,

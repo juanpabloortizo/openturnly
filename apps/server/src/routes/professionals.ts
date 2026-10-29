@@ -1,8 +1,15 @@
 import { professionalSchema } from "@openturnly/core";
 import { and, asc, eq, inArray, max } from "drizzle-orm";
 import { Hono } from "hono";
-import { resourceServices, resources, services, weeklyHours } from "../db/schema.ts";
+import {
+  resourceLocations,
+  resourceServices,
+  resources,
+  services,
+  weeklyHours,
+} from "../db/schema.ts";
 import { apiError, type BusinessEnv, type Deps, parseBody } from "../lib/http.ts";
+import { allLocationIds, setResourceLocations } from "../lib/locations.ts";
 import type { Queryable } from "../lib/schedules.ts";
 
 export function professionalRoutes({ db }: Deps) {
@@ -43,13 +50,13 @@ export function professionalRoutes({ db }: Deps) {
         .where(eq(resources.businessId, businessId))
         .orderBy(asc(resources.position), asc(resources.name));
       const ids = team.map((professional) => professional.id);
-      const links =
+      const [links, places] =
         ids.length > 0
-          ? await db
-              .select()
-              .from(resourceServices)
-              .where(inArray(resourceServices.resourceId, ids))
-          : [];
+          ? await Promise.all([
+              db.select().from(resourceServices).where(inArray(resourceServices.resourceId, ids)),
+              db.select().from(resourceLocations).where(inArray(resourceLocations.resourceId, ids)),
+            ])
+          : [[], []];
       const withOwnHours = new Set(
         (
           await db
@@ -64,6 +71,9 @@ export function professionalRoutes({ db }: Deps) {
           serviceIds: links
             .filter((link) => link.resourceId === professional.id)
             .map((link) => link.serviceId),
+          locationIds: places
+            .filter((place) => place.resourceId === professional.id)
+            .map((place) => place.locationId),
           hasOwnHours: withOwnHours.has(professional.id),
         })),
       });
@@ -71,7 +81,7 @@ export function professionalRoutes({ db }: Deps) {
 
     .post("/", async (c) => {
       const businessId = c.get("business").id;
-      const { serviceIds, ...input } = await parseBody(c, professionalSchema);
+      const { serviceIds, locationIds, ...input } = await parseBody(c, professionalSchema);
       const professional = await db.transaction(async (tx) => {
         const [last] = await tx
           .select({ position: max(resources.position) })
@@ -83,6 +93,12 @@ export function professionalRoutes({ db }: Deps) {
           .returning();
         if (!created) throw apiError(500, "internal_error");
         await setServices(tx, businessId, created.id, serviceIds);
+        await setResourceLocations(
+          tx,
+          businessId,
+          created.id,
+          locationIds ?? (await allLocationIds(tx, businessId)),
+        );
         return created;
       });
       return c.json({ professional }, 201);
@@ -91,13 +107,17 @@ export function professionalRoutes({ db }: Deps) {
     .patch("/:resourceId", async (c) => {
       const businessId = c.get("business").id;
       const current = await findProfessional(businessId, c.req.param("resourceId"));
-      const { serviceIds, ...input } = await parseBody(c, professionalSchema.partial());
+      const { serviceIds, locationIds, ...input } = await parseBody(
+        c,
+        professionalSchema.partial(),
+      );
       const professional = await db.transaction(async (tx) => {
         const [updated] =
           Object.keys(input).length > 0
             ? await tx.update(resources).set(input).where(eq(resources.id, current.id)).returning()
             : [current];
         if (serviceIds) await setServices(tx, businessId, current.id, serviceIds);
+        if (locationIds) await setResourceLocations(tx, businessId, current.id, locationIds);
         return updated;
       });
       return c.json({ professional });

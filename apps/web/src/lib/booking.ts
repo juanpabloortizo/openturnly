@@ -12,13 +12,20 @@ export function usePublicCatalog(slug: string) {
 
 export function useAvailability(
   slug: string,
-  params: { serviceId: string; resourceId: string | null; from: string; to: string } | null,
+  params: {
+    locationId: string | null;
+    serviceId: string;
+    resourceId: string | null;
+    from: string;
+    to: string;
+  } | null,
 ) {
   return useQuery({
     queryKey: ["public", slug, "availability", params],
     enabled: params !== null && params.from <= params.to,
     queryFn: async () => {
       const query = new URLSearchParams({
+        locationId: params?.locationId ?? "",
         serviceId: params?.serviceId ?? "",
         resourceId: params?.resourceId ?? "",
         from: params?.from ?? "",
