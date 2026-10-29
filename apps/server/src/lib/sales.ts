@@ -9,6 +9,7 @@ import {
   deposits,
   giftCards,
   locations,
+  products,
   resources,
   saleItems,
   salePayments,
@@ -19,6 +20,7 @@ import {
 } from "../db/schema.ts";
 import { usableGiftCard } from "./gift-cards.ts";
 import { apiError } from "./http.ts";
+import { lockStock, moveStock } from "./inventory.ts";
 import { resolveLocation } from "./locations.ts";
 import type { Queryable } from "./schedules.ts";
 
@@ -93,8 +95,29 @@ export async function createSale(
       if (!customer) throw apiError(404, "customer_not_found");
     }
 
+    const productIds = [
+      ...new Set(
+        input.items.flatMap((item) =>
+          item.kind === "product" && item.productId ? [item.productId] : [],
+        ),
+      ),
+    ];
+    const goods =
+      productIds.length > 0
+        ? await tx
+            .select({ id: products.id, name: products.name })
+            .from(products)
+            .where(and(eq(products.businessId, business.id), inArray(products.id, productIds)))
+        : [];
+    const productNames = new Map(goods.map((product) => [product.id, product.name]));
+    if (productNames.size !== productIds.length) throw apiError(404, "product_not_found");
+
     const serviceIds = [
-      ...new Set(input.items.flatMap((item) => (item.serviceId ? [item.serviceId] : []))),
+      ...new Set(
+        input.items.flatMap((item) =>
+          item.kind === "service" && item.serviceId ? [item.serviceId] : [],
+        ),
+      ),
     ];
     const catalog =
       serviceIds.length > 0
@@ -124,9 +147,12 @@ export async function createSale(
 
     const lines = input.items.map((item, position) => {
       const appointment = charged.find((row) => row.id === item.appointmentId);
-      const name =
-        appointment?.serviceName ?? (item.serviceId ? serviceNames.get(item.serviceId) : undefined);
-      if (!name) throw apiError(404, "service_not_found");
+      const isProduct = item.kind === "product";
+      const name = isProduct
+        ? productNames.get(item.productId ?? "")
+        : (appointment?.serviceName ??
+          (item.serviceId ? serviceNames.get(item.serviceId) : undefined));
+      if (!name) throw apiError(404, isProduct ? "product_not_found" : "service_not_found");
       const gross = item.quantity * item.unitPrice;
       if (item.discountAmount > gross) {
         throw apiError(400, "validation_failed", {
@@ -135,8 +161,9 @@ export async function createSale(
       }
       return {
         kind: item.kind,
-        appointmentId: item.appointmentId ?? null,
-        serviceId: item.serviceId,
+        appointmentId: isProduct ? null : (item.appointmentId ?? null),
+        serviceId: isProduct ? null : item.serviceId,
+        productId: isProduct ? (item.productId ?? null) : null,
         name,
         resourceId: item.resourceId,
         resourceName: item.resourceId ? (names.get(item.resourceId) ?? null) : null,
@@ -229,6 +256,22 @@ export async function createSale(
     if (!sale) throw apiError(500, "internal_error");
 
     await tx.insert(saleItems).values(lines.map((line) => ({ ...line, saleId: sale.id })));
+    // Products sold leave the location's stock.
+    const sold = lines.filter((line) => line.productId);
+    if (sold.length > 0) {
+      await lockStock(tx, business.id);
+      for (const line of sold) {
+        await moveStock(tx, {
+          businessId: business.id,
+          productId: line.productId ?? "",
+          locationId: location.id,
+          kind: "sale",
+          quantity: -line.quantity,
+          saleId: sale.id,
+          createdBy: soldBy,
+        });
+      }
+    }
     if (input.tips.length > 0) {
       await tx.insert(saleTips).values(
         input.tips.map((tip) => ({
@@ -286,7 +329,7 @@ export async function voidSale(db: Db, businessId: string, saleId: string) {
       .update(sales)
       .set({ status: "void", voidedAt: new Date() })
       .where(and(eq(sales.businessId, businessId), eq(sales.id, saleId), eq(sales.status, "paid")))
-      .returning({ id: sales.id });
+      .returning({ id: sales.id, locationId: sales.locationId });
     if (!voided) {
       const [existing] = await tx
         .select({ id: sales.id })
@@ -307,6 +350,25 @@ export async function voidSale(db: Db, businessId: string, saleId: string) {
     ).flatMap((row) => (row.id ? [row.id] : []));
     if (sold.length > 0) {
       await tx.update(giftCards).set({ active: false }).where(inArray(giftCards.id, sold));
+    }
+    // Products sold go back on the shelf.
+    const returned = await tx
+      .select({ productId: saleItems.productId, quantity: saleItems.quantity })
+      .from(saleItems)
+      .where(and(eq(saleItems.saleId, saleId), eq(saleItems.kind, "product")));
+    if (returned.length > 0 && voided.locationId) {
+      await lockStock(tx, businessId);
+      for (const line of returned) {
+        if (!line.productId) continue;
+        await moveStock(tx, {
+          businessId,
+          productId: line.productId,
+          locationId: voided.locationId,
+          kind: "return",
+          quantity: line.quantity,
+          saleId,
+        });
+      }
     }
   });
 }

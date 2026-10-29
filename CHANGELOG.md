@@ -28,6 +28,12 @@ All notable changes to OpenTurnly are documented here. The format follows
   are applied at the counter, and gift cards with a balance that the business sells (recorded
   as a sale) or gives away, then spends as a payment at checkout. Uses and balances follow
   the appointments and sales that used them: cancelling or voiding gives them back.
+- **Inventory**: products with category, brand, format, content and unit, sale price and
+  cost, a minimum stock and whether they're sold or only used. Stock is kept per location,
+  with alerts at the minimum and Excel/CSV export. Stock in, counts, internal use and
+  transfers between locations are recorded by hand; products sold at checkout leave stock
+  and come back if the sale is voided. Every movement is listed with what it left, by
+  period, location and type.
 - **AI agents (MCP)**: `location_id` for finding times, booking, moving appointments, hours
   and closures; `get_business_info` lists each location with its hours.
 - **Workflows**: `appointment.location` and `appointment.location_address` data.

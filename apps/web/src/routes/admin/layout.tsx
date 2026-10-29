@@ -10,6 +10,7 @@ import {
   Gift,
   MapPin,
   Menu,
+  Package,
   Plus,
   Receipt,
   Scissors,
@@ -177,6 +178,12 @@ function SidebarContent({ user, collapsed }: { user: User; collapsed: boolean })
                 label: t("nav.giftCards"),
                 icon: Gift,
                 tour: "gift-cards",
+              },
+              {
+                to: `${base}/inventory`,
+                label: t("nav.inventory"),
+                icon: Package,
+                tour: "inventory",
               },
               {
                 to: `${base}/customers`,

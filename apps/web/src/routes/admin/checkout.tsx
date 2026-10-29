@@ -24,11 +24,14 @@ import { cn } from "../../lib/cn.ts";
 import { formatDay } from "../../lib/format.ts";
 import { errorMessage } from "../../lib/forms.ts";
 import { lookupGiftCard } from "../../lib/gift-cards.ts";
+import { useProducts } from "../../lib/inventory.ts";
 import { useDepositMutations, useDeposits, useSaleMutations } from "../../lib/sales.ts";
 import { useBusinessContext } from "./business.tsx";
 
 type Line = {
   key: string;
+  kind: "service" | "product";
+  productId?: string;
   serviceId: string | null;
   appointmentId?: string;
   /** Shown for an appointment's line: the service as it was booked. */
@@ -74,6 +77,7 @@ export function CheckoutModal({
   const services = useServices(business.id);
   const professionals = useProfessionals(business.id);
   const locations = useLocations(business.id);
+  const products = useProducts(business.id);
   const { create } = useSaleMutations(business.id);
 
   const places = (locations.data ?? []).filter(
@@ -88,6 +92,7 @@ export function CheckoutModal({
       ? [
           {
             key: newKey(),
+            kind: "service",
             serviceId: appointment.serviceId,
             appointmentId: appointment.id,
             name: appointment.serviceName,
@@ -134,6 +139,7 @@ export function CheckoutModal({
   const offered = (services.data ?? []).filter(
     (service) => service.active && (!location || location.serviceIds.includes(service.id)),
   );
+  const forSale = (products.data ?? []).filter((product) => product.active && product.forSale);
   const team = (professionals.data ?? []).filter(
     (professional) => !location || location.resourceIds.includes(professional.id),
   );
@@ -178,10 +184,28 @@ export function CheckoutModal({
       ...current,
       {
         key: newKey(),
+        kind: "service",
         serviceId: service.id,
         resourceId: appointment?.resourceId ?? null,
         quantity: 1,
         unitPrice: service.priceAmount ?? 0,
+        discountAmount: 0,
+      },
+    ]);
+  };
+  const addProduct = () => {
+    const product = forSale[0];
+    if (!product) return;
+    setLines((current) => [
+      ...current,
+      {
+        key: newKey(),
+        kind: "product",
+        productId: product.id,
+        serviceId: null,
+        resourceId: appointment?.resourceId ?? null,
+        quantity: 1,
+        unitPrice: product.priceAmount,
         discountAmount: 0,
       },
     ]);
@@ -253,7 +277,8 @@ export function CheckoutModal({
       internal,
       ...(discountCode ? { giftCardId: discountCode.id } : {}),
       items: lines.map((line) => ({
-        kind: "service",
+        kind: line.kind,
+        ...(line.productId ? { productId: line.productId } : {}),
         serviceId: line.serviceId,
         ...(line.appointmentId ? { appointmentId: line.appointmentId } : {}),
         resourceId: line.resourceId,
@@ -356,10 +381,18 @@ export function CheckoutModal({
           <section className="space-y-2">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-medium text-zinc-800">{t("checkout.items")}</h3>
-              <Button variant="ghost" size="sm" onClick={addLine} disabled={offered.length === 0}>
-                <Plus className="size-3.5" aria-hidden />
-                {t("checkout.addService")}
-              </Button>
+              <div className="flex gap-1">
+                {forSale.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={addProduct}>
+                    <Plus className="size-3.5" aria-hidden />
+                    {t("checkout.addProduct")}
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" onClick={addLine} disabled={offered.length === 0}>
+                  <Plus className="size-3.5" aria-hidden />
+                  {t("checkout.addService")}
+                </Button>
+              </div>
             </div>
             {lines.length === 0 ? (
               <p className="rounded-lg border border-dashed border-zinc-200 px-3 py-6 text-center text-sm text-zinc-500">
@@ -382,6 +415,28 @@ export function CheckoutModal({
                             </span>
                           )}
                         </span>
+                      ) : line.kind === "product" ? (
+                        <Select
+                          aria-label={t("checkout.product")}
+                          className="min-w-0 flex-1"
+                          value={line.productId ?? ""}
+                          onChange={(event) => {
+                            const product = forSale.find((item) => item.id === event.target.value);
+                            editLine(line.key, {
+                              productId: event.target.value,
+                              unitPrice: product?.priceAmount ?? line.unitPrice,
+                            });
+                          }}
+                        >
+                          {forSale.map((product) => (
+                            <option key={product.id} value={product.id}>
+                              {t("checkout.productInStock", {
+                                name: product.name,
+                                count: location ? (product.stock[location.id] ?? 0) : 0,
+                              })}
+                            </option>
+                          ))}
+                        </Select>
                       ) : (
                         <Select
                           aria-label={t("booking.service")}
