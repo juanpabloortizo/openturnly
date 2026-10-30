@@ -313,6 +313,9 @@ export const resources = pgTable(
     name: text("name").notNull(),
     active: boolean("active").notNull().default(true),
     position: integer("position").notNull().default(0),
+    /** Percent of each service and each product they sell that is theirs (commissions). */
+    serviceCommission: doublePrecision("service_commission").notNull().default(0),
+    productCommission: doublePrecision("product_commission").notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

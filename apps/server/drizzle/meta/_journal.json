@@ -141,6 +141,13 @@
       "when": 1793315859659,
       "tag": "0019_cash",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793316191220,
+      "tag": "0020_commissions",
+      "breakpoints": true
     }
   ]
 }

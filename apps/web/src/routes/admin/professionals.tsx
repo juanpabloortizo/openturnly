@@ -185,6 +185,12 @@ function ProfessionalForm({
   const [serviceIds, setServiceIds] = useState<string[]>(
     professional?.serviceIds ?? services.data?.map((service) => service.id) ?? [],
   );
+  const [serviceCommission, setServiceCommission] = useState(
+    String(professional?.serviceCommission ?? 0),
+  );
+  const [productCommission, setProductCommission] = useState(
+    String(professional?.productCommission ?? 0),
+  );
   const [locationIds, setLocationIds] = useState<string[]>(
     professional?.locationIds ?? locations.map((location) => location.id),
   );
@@ -207,7 +213,14 @@ function ProfessionalForm({
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const values: ProfessionalInput = { name, active, serviceIds, locationIds };
+    const values: ProfessionalInput = {
+      name,
+      active,
+      serviceIds,
+      locationIds,
+      serviceCommission: Number(serviceCommission.replace(",", ".")) || 0,
+      productCommission: Number(productCommission.replace(",", ".")) || 0,
+    };
     const result = validate(professionalSchema, values);
     setErrors(result.errors ?? {});
     if (!result.data) return;
@@ -311,6 +324,36 @@ function ProfessionalForm({
             />
           )}
         </fieldset>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          {(
+            [
+              ["serviceCommission", serviceCommission, setServiceCommission],
+              ["productCommission", productCommission, setProductCommission],
+            ] as const
+          ).map(([key, value, set]) => (
+            <Field
+              key={key}
+              label={t(`professionals.${key}`)}
+              error={fieldMessage(t, key, errors[key])}
+            >
+              {(props) => (
+                <div className="relative">
+                  <Input
+                    {...props}
+                    inputMode="decimal"
+                    className="pr-8 text-right tabular-nums"
+                    value={value}
+                    onChange={(event) => set(event.target.value.replace(/[^\d.,]/g, ""))}
+                  />
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-zinc-400">
+                    %
+                  </span>
+                </div>
+              )}
+            </Field>
+          ))}
+        </div>
 
         {severalLocations && (
           <fieldset className="space-y-2">

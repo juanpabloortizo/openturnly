@@ -356,6 +356,9 @@ export const professionalSchema = z.object({
   serviceIds: z.array(z.string().min(1)).max(500),
   /** Where they work. Left out when creating: every location. */
   locationIds: z.array(z.string().min(1)).max(200).optional(),
+  /** What they earn of each service and each product they sell, in percent. */
+  serviceCommission: z.number().min(0).max(100).default(0),
+  productCommission: z.number().min(0).max(100).default(0),
 });
 export type ProfessionalInput = z.infer<typeof professionalSchema>;
 

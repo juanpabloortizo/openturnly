@@ -40,6 +40,13 @@ All notable changes to OpenTurnly are documented here. The format follows
   cash payment, deposit, income and expense; transfers take cash out (to the bank or another
   location) and "Correct cash" records the difference after counting it. Sales charged from
   the calendar land there on their own.
+- **Reports**: a summary per period and location (bookings, occupancy, new customers and
+  sales, each against the period before; where bookings came from; best sellers;
+  appointments per professional; today's appointments), **tips** per professional with
+  every tip and export, and **commissions**: each professional's percentage of the
+  services and products they sold (after each sale's discount) plus their tips, with the
+  total to pay. Commission percentages are set on each professional.
+- **Sidebar** grouped into "Sales and products" and "Administration".
 - **AI agents (MCP)**: `location_id` for finding times, booking, moving appointments, hours
   and closures; `get_business_info` lists each location with its hours.
 - **Workflows**: `appointment.location` and `appointment.location_address` data.

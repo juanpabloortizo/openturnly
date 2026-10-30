@@ -1,0 +1,2 @@
+ALTER TABLE "resources" ADD COLUMN "service_commission" double precision DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "resources" ADD COLUMN "product_commission" double precision DEFAULT 0 NOT NULL;
