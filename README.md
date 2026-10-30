@@ -104,6 +104,8 @@ updates, read the [self-hosting guide](docs/self-hosting.md), or follow the
   transfers, and products sold at checkout.
 - **Cash register** per location: where the money came from, expenses, cash in the register,
   transfers and corrections.
+- **Reports**: bookings, occupancy, new customers and sales against the previous period,
+  tips and commissions per professional.
 - **Customers** with their history, notes and duplicate merging.
 - **Locations**: one business, several branches, each with its own address, hours,
   services and team. Staff can work at several locations and are never booked at two at

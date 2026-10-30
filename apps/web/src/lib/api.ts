@@ -116,6 +116,9 @@ export type Professional = {
   /** Locations they work at. */
   locationIds: string[];
   hasOwnHours: boolean;
+  /** Percent of the services and products they sell that is theirs. */
+  serviceCommission: number;
+  productCommission: number;
 };
 
 /** A place the business works from, with what it offers and who works there. */

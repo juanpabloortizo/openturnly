@@ -1,6 +1,7 @@
 import {
   Building2,
   CalendarDays,
+  ChartColumn,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -163,35 +164,20 @@ function SidebarContent({ user, collapsed }: { user: User; collapsed: boolean })
   // Professionals only work with their own agenda.
   const role = current?.access.role;
   const manages = role !== "professional";
-  const businessNav = base
+  // Grouped like the work: selling, products, numbers, then setting the business up.
+  type NavGroup = "sales" | "admin";
+  const businessNav: {
+    to: string;
+    label: string;
+    icon: typeof CalendarDays;
+    tour: string;
+    end?: boolean;
+    group?: NavGroup;
+  }[] = base
     ? [
         { to: base, label: t("nav.agenda"), icon: CalendarDays, end: true, tour: "agenda" },
         ...(manages
           ? [
-              {
-                to: `${base}/sales`,
-                label: t("nav.sales"),
-                icon: Receipt,
-                tour: "sales",
-              },
-              {
-                to: `${base}/cash`,
-                label: t("nav.cash"),
-                icon: Wallet,
-                tour: "cash",
-              },
-              {
-                to: `${base}/gift-cards`,
-                label: t("nav.giftCards"),
-                icon: Gift,
-                tour: "gift-cards",
-              },
-              {
-                to: `${base}/inventory`,
-                label: t("nav.inventory"),
-                icon: Package,
-                tour: "inventory",
-              },
               {
                 to: `${base}/customers`,
                 label: t("nav.customers"),
@@ -199,29 +185,73 @@ function SidebarContent({ user, collapsed }: { user: User; collapsed: boolean })
                 tour: "customers",
               },
               {
+                to: `${base}/reports`,
+                label: t("nav.reports"),
+                icon: ChartColumn,
+                tour: "reports",
+              },
+              {
+                to: `${base}/sales`,
+                label: t("nav.sales"),
+                icon: Receipt,
+                tour: "sales",
+                group: "sales" as const,
+              },
+              {
+                to: `${base}/cash`,
+                label: t("nav.cash"),
+                icon: Wallet,
+                tour: "cash",
+                group: "sales" as const,
+              },
+              {
+                to: `${base}/gift-cards`,
+                label: t("nav.giftCards"),
+                icon: Gift,
+                tour: "gift-cards",
+                group: "sales" as const,
+              },
+              {
+                to: `${base}/inventory`,
+                label: t("nav.inventory"),
+                icon: Package,
+                tour: "inventory",
+                group: "sales" as const,
+              },
+              {
                 to: `${base}/services`,
                 label: t("nav.services"),
                 icon: Scissors,
                 tour: "services",
+                group: "admin" as const,
               },
               {
                 to: `${base}/professionals`,
                 label: t("nav.professionals"),
                 icon: Users,
                 tour: "professionals",
+                group: "admin" as const,
               },
               {
                 to: `${base}/locations`,
                 label: t("nav.locations"),
                 icon: MapPin,
                 tour: "locations",
+                group: "admin" as const,
               },
-              { to: `${base}/hours`, label: t("nav.hours"), icon: Clock3, tour: "hours" },
+              {
+                to: `${base}/hours`,
+                label: t("nav.hours"),
+                icon: Clock3,
+                tour: "hours",
+                group: "admin" as const,
+              },
               {
                 to: `${base}/settings`,
                 label: t("nav.settings"),
                 icon: Settings,
                 tour: "settings",
+                group: "admin" as const,
               },
             ]
           : []),
@@ -247,9 +277,23 @@ function SidebarContent({ user, collapsed }: { user: User; collapsed: boolean })
         />
       </div>
 
-      <nav className="mt-4 flex-1 space-y-1 overflow-y-auto px-3">
-        {businessNav.map((item) => (
-          <SidebarLink key={item.to} collapsed={collapsed} {...item} />
+      <nav className="mt-4 flex-1 space-y-1 overflow-y-auto px-3 pb-4">
+        {businessNav.map(({ group, ...item }, index) => (
+          <div key={item.to}>
+            {group && businessNav[index - 1]?.group !== group && (
+              <div
+                className={cn(
+                  "pt-4 pb-1",
+                  collapsed
+                    ? "mx-2 border-t border-zinc-200"
+                    : "px-3 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase",
+                )}
+              >
+                {!collapsed && t(`nav.groups.${group}`)}
+              </div>
+            )}
+            <SidebarLink collapsed={collapsed} {...item} />
+          </div>
         ))}
       </nav>
 

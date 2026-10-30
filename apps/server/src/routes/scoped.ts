@@ -14,6 +14,7 @@ import { imageRoutes } from "./images.ts";
 import { locationRoutes } from "./locations.ts";
 import { productRoutes } from "./products.ts";
 import { professionalRoutes } from "./professionals.ts";
+import { reportRoutes } from "./reports.ts";
 import { saleRoutes } from "./sales.ts";
 import { serviceRoutes } from "./services.ts";
 import { stockRoutes } from "./stock.ts";
@@ -70,6 +71,7 @@ export function businessScopedRoutes(deps: Deps) {
     .route("/customers", customerRoutes(deps))
     .route("/sales", saleRoutes(deps))
     .route("/cash", cashRoutes(deps))
+    .route("/reports", reportRoutes(deps))
     .route("/deposits", depositRoutes(deps))
     .route("/gift-cards", giftCardRoutes(deps))
     .route("/products", productRoutes(deps))
