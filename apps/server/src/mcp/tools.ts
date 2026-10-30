@@ -222,6 +222,16 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
           ),
         )
         .orderBy(asc(closures.date));
+      const openingHours = (locationId: string | undefined) =>
+        [1, 2, 3, 4, 5, 6, 0].map((weekday) => {
+          const ranges = hours.filter(
+            (range) => range.locationId === locationId && range.weekday === weekday,
+          );
+          return {
+            day: weekdayName(addDays(A_SUNDAY, weekday), business.locale),
+            hours: ranges.length > 0 ? ranges.map((r) => `${r.start}-${r.end}`) : "closed",
+          };
+        });
       const country = businessCountry(business);
       const overrides = new Set(
         (
@@ -245,20 +255,14 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
         today_weekday: weekdayName(day, business.locale),
         currency: business.currency,
         language: business.locale,
+        // The first location's hours, as before locations existed.
+        opening_hours: openingHours(places[0]?.id),
         locations: places.map((place) => ({
           id: place.id,
           name: place.name,
           address: place.address ?? business.address,
           phone: place.phone ?? business.phone,
-          opening_hours: [1, 2, 3, 4, 5, 6, 0].map((weekday) => {
-            const ranges = hours.filter(
-              (range) => range.locationId === place.id && range.weekday === weekday,
-            );
-            return {
-              day: weekdayName(addDays(A_SUNDAY, weekday), business.locale),
-              hours: ranges.length > 0 ? ranges.map((r) => `${r.start}-${r.end}`) : "closed",
-            };
-          }),
+          opening_hours: openingHours(place.id),
         })),
         // A closure without a location closes every location.
         upcoming_closures: closed.map((closure) => ({
