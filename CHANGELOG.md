@@ -6,6 +6,57 @@ All notable changes to OpenTurnly are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-29
+
+A business can now run its front desk in OpenTurnly: several locations, charging and sales,
+gift cards, inventory, the cash register and reports. Existing installs update by pulling the
+new image; migrations run on start and every business gets one location with what it had.
+
+### Added
+
+- **Locations**: a business can work from several locations (Administration → Locations),
+  each with its own address, phone, opening hours, closures, services and team. Someone
+  can work at several locations, with their own hours at each, and is never booked at two
+  at the same time. With more than one location the booking page starts with "Where would
+  you like your appointment?", and a link with `?local=<id>` goes straight to one. The
+  calendar filters by location and appointments can move between them. Existing businesses
+  get one location with their current hours, services, team and appointments.
+- **Sales and checkout**: charge an appointment from the calendar ("Charge") or make a sale
+  at the counter, with extra services, a discount, tips for each professional and payment
+  split across cash, card, transfer or other. Sales are numbered (#1, #2…), can be voided
+  (they stay in the history) and are listed in **Sales** with filters by period and location
+  and Excel/CSV export. Internal sales (for the team or the business's own use) are marked
+  apart. OpenTurnly records how customers paid; it still doesn't take payments itself.
+- **Deposits**: record money a customer leaves in advance, for an appointment or a later
+  visit. The calendar shows it, checkout uses it, and it can be returned while unused.
+- **Gift cards**: discount codes (a percentage or an amount off, with optional dates and a
+  limit of uses) that customers type on the booking page ("Have a discount code?") or that
+  are applied at the counter, and gift cards with a balance that the business sells (recorded
+  as a sale) or gives away, then spends as a payment at checkout. Uses and balances follow
+  the appointments and sales that used them: cancelling or voiding gives them back.
+- **Inventory**: products with category, brand, format, content and unit, sale price and
+  cost, a minimum stock and whether they're sold or only used. Stock is kept per location,
+  with alerts at the minimum and Excel/CSV export. Stock in, counts, internal use and
+  transfers between locations are recorded by hand; products sold at checkout leave stock
+  and come back if the sale is voided. Every movement is listed with what it left, by
+  period, location and type.
+- **Cash register**: per location and period, sales + deposits + internal sales + gift
+  cards + other income − expenses = the period's result, also split by payment method, with
+  the lines behind each figure and an Excel report. "Cash in the register" follows every
+  cash payment, deposit, income and expense; transfers take cash out (to the bank or another
+  location) and "Correct cash" records the difference after counting it. Sales charged from
+  the calendar land there on their own.
+- **Reports**: a summary per period and location (bookings, occupancy, new customers and
+  sales, each against the period before; where bookings came from; best sellers;
+  appointments per professional; today's appointments), **tips** per professional with
+  every tip and export, and **commissions**: each professional's percentage of the
+  services and products they sold (after each sale's discount) plus their tips, with the
+  total to pay. Commission percentages are set on each professional.
+- **Sidebar** grouped into "Sales and products" and "Administration".
+- **AI agents (MCP)**: `location_id` for finding times, booking, moving appointments, hours
+  and closures; `get_business_info` lists each location with its hours.
+- **Workflows**: `appointment.location` and `appointment.location_address` data.
+
 ## [1.1.0] - 2026-10-22
 
 ### Added
@@ -95,6 +146,7 @@ The first public release, under the MIT license.
   own pages, and "My account" waits 15 minutes after 5 wrong current passwords. See
   [SECURITY.md](SECURITY.md) for everything that's built in.
 
-[Unreleased]: https://github.com/juanpabloortizo/openturnly/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/juanpabloortizo/openturnly/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/juanpabloortizo/openturnly/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/juanpabloortizo/openturnly/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/juanpabloortizo/openturnly/releases/tag/v1.0.0

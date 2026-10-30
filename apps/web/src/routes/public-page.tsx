@@ -16,11 +16,12 @@ import {
   ChevronLeft,
   Clock,
   LoaderCircle,
+  MapPin,
   RotateCcw,
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 import { BookingBackdrop, isDarkTheme } from "../components/booking-backdrop.tsx";
 import { BookingHeader } from "../components/booking-header.tsx";
 import { Combobox } from "../components/combobox.tsx";
@@ -33,14 +34,14 @@ import {
   type PublicBusiness,
   type PublicCatalog,
 } from "../lib/api.ts";
-import { useAvailability, useBook, usePublicCatalog } from "../lib/booking.ts";
+import { useAvailability, useBook, useGiftCodeCheck, usePublicCatalog } from "../lib/booking.ts";
 import { brandStyle } from "../lib/brand.ts";
 import { cn } from "../lib/cn.ts";
 import { formatDay, formatDuration } from "../lib/format.ts";
 import { type FieldErrors, fieldMessage, validate } from "../lib/forms.ts";
 import { useBookingProof } from "../lib/proof.ts";
 
-type Step = "service" | "datetime" | "details" | "confirm";
+type Step = "location" | "service" | "datetime" | "details" | "confirm";
 type T = TFunction;
 
 /** The page a business shares with its customers: /<slug>. */
@@ -134,12 +135,30 @@ function BookingWizard({
   t: T;
   locale: string;
 }) {
-  const { business, professionals, services } = catalog;
-  // The time comes before the person: customers see who is free when, instead of picking
-  // someone first and finding them fully booked.
-  const steps: Step[] = ["service", "datetime", "details", "confirm"];
+  const { business, professionals, locations } = catalog;
+  // With several locations the customer starts by choosing where. A link to one location
+  // (?local=<id>) starts on its services. The time comes before the person: customers see
+  // who is free when, instead of picking someone first and finding them fully booked.
+  const severalLocations = locations.length > 1;
+  const steps: Step[] = [
+    ...(severalLocations ? (["location"] as const) : []),
+    "service",
+    "datetime",
+    "details",
+    "confirm",
+  ];
+  const [searchParams] = useSearchParams();
+  const linked = locations.find((place) => place.id === searchParams.get("local"));
 
-  const [stepIndex, setStepIndex] = useState(0);
+  const [stepIndex, setStepIndex] = useState(severalLocations && linked ? 1 : 0);
+  const [locationId, setLocationId] = useState<string | null>(
+    linked?.id ?? (severalLocations ? null : (locations[0]?.id ?? null)),
+  );
+  const location = locations.find((place) => place.id === locationId);
+  // What the chosen location offers.
+  const services = location
+    ? catalog.services.filter((service) => location.serviceIds.includes(service.id))
+    : catalog.services;
   const [serviceId, setServiceId] = useState<string | null>(null);
   // Someone the customer wants to see (narrows the times), or null for anyone.
   const [preferredId, setPreferredId] = useState<string | null>(null);
@@ -158,8 +177,10 @@ function BookingWizard({
   const [errors, setErrors] = useState<FieldErrors>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [booked, setBooked] = useState<BookedAppointment | null>(null);
+  // A discount code that worked for the chosen service.
+  const [gift, setGift] = useState<{ code: string; discountAmount: number } | null>(null);
   // The anti-bot puzzle is solved in the background from the moment a time is being chosen.
-  const takeProof = useBookingProof(slug, stepIndex >= 1);
+  const takeProof = useBookingProof(slug, stepIndex >= steps.indexOf("datetime"));
   const book = useBook(slug, takeProof);
   // Usually instant; while a business is flooded with bookings the puzzle takes longer.
   const [slowCheck, setSlowCheck] = useState(false);
@@ -181,6 +202,7 @@ function BookingWizard({
   /** Picks a service; a different one starts the date, time and person over. */
   const chooseService = (id: string) => {
     if (id !== serviceId) {
+      setGift(null);
       setDate(null);
       setTime(null);
       setPreferredId(null);
@@ -188,8 +210,24 @@ function BookingWizard({
     }
     setServiceId(id);
   };
-  // Who can do the chosen service.
-  const team = professionals.filter((member) => serviceId && member.serviceIds.includes(serviceId));
+  /** Picks a location; another one starts the service, date, time and person over. */
+  const chooseLocation = (id: string) => {
+    if (id !== locationId) {
+      setServiceId(null);
+      setDate(null);
+      setTime(null);
+      setPreferredId(null);
+      setStaffId(null);
+    }
+    setLocationId(id);
+  };
+  // Who can do the chosen service, at the chosen location.
+  const team = professionals.filter(
+    (member) =>
+      serviceId &&
+      member.serviceIds.includes(serviceId) &&
+      (!location || location.professionalIds.includes(member.id)),
+  );
 
   // When the step last changed. "Continuar" sits in the same place on every step, so a quick
   // second click would land on the next step's button: submitting an empty form, or booking
@@ -215,12 +253,14 @@ function BookingWizard({
     if (!service || !date || !time || !details) return;
     book.mutate(
       {
+        ...(location ? { locationId: location.id } : {}),
         serviceId: service.id,
         resourceId,
         date,
         time,
         customer: details.customer,
         answers: Object.fromEntries(details.answers.map((answer) => [answer.id, answer.value])),
+        ...(gift ? { giftCode: gift.code } : {}),
         website,
       },
       {
@@ -230,6 +270,8 @@ function BookingWizard({
         },
         onError: (error) => {
           const code = error instanceof ApiError ? error.code : "unknown_error";
+          // The code stopped working meanwhile (its last use went to someone else).
+          if (code === "gift_card_unusable" || code === "gift_card_not_found") setGift(null);
           if (code === "slot_taken") {
             // Someone got there first: back to the times, which reload without that one.
             setTime(null);
@@ -295,10 +337,12 @@ function BookingWizard({
       <div className="mt-6 border-t border-zinc-100">
         <BookingDone
           appointment={booked}
+          showLocation={severalLocations}
           t={t}
           locale={locale}
           onAgain={() => {
             setBooked(null);
+            if (severalLocations) setLocationId(null);
             setServiceId(null);
             setDate(null);
             setTime(null);
@@ -310,12 +354,14 @@ function BookingWizard({
   }
 
   const labels: Record<Step, string> = {
+    location: t("booking.steps.location"),
     service: t("booking.steps.service"),
     datetime: t("booking.steps.datetime"),
     details: t("booking.steps.details"),
     confirm: t("booking.steps.confirm"),
   };
   const titles: Record<Step, string> = {
+    location: t("booking.titles.location"),
     service: t("booking.titles.service"),
     datetime: t("booking.titles.datetime"),
     details: t("booking.titles.details"),
@@ -373,6 +419,47 @@ function BookingWizard({
           <div className="mb-5">
             <Alert>{notice}</Alert>
           </div>
+        )}
+
+        {step === "location" && (
+          <ul className="space-y-3">
+            {locations.map((place) => (
+              <li key={place.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    chooseLocation(place.id);
+                    next();
+                  }}
+                  className={cn(
+                    "group block w-full rounded-2xl border p-4 text-left transition duration-200 hover:-translate-y-px hover:border-brand-300 hover:shadow-[0_12px_28px_-16px_rgb(15_15_35/0.35)] sm:p-5",
+                    place.id === locationId
+                      ? "border-brand-500 bg-brand-50/40"
+                      : "border-zinc-200 bg-white",
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="font-medium text-zinc-900">{place.name}</div>
+                      {place.address && (
+                        <div className="mt-1.5 flex items-start gap-1.5 text-sm text-zinc-500">
+                          <MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                          <span>{place.address}</span>
+                        </div>
+                      )}
+                      {place.phone && (
+                        <div className="mt-1 text-sm text-zinc-500 tabular-nums">{place.phone}</div>
+                      )}
+                    </div>
+                    <ArrowRight
+                      className="mt-0.5 size-4 shrink-0 text-zinc-300 transition group-hover:translate-x-0.5 group-hover:text-brand-600"
+                      aria-hidden
+                    />
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
 
         {step === "service" &&
@@ -473,6 +560,7 @@ function BookingWizard({
           <DateTimeStep
             slug={slug}
             catalog={catalog}
+            locationId={location?.id ?? null}
             serviceId={service.id}
             team={team}
             preferredId={preferredId}
@@ -537,6 +625,14 @@ function BookingWizard({
         {step === "confirm" && service && date && time && details && (
           <Summary
             rows={[
+              ...(severalLocations && location
+                ? [
+                    {
+                      label: t("booking.location"),
+                      value: [location.name, location.address].filter(Boolean).join(" · "),
+                    },
+                  ]
+                : []),
               { label: t("booking.date"), value: `${formatDay(date, locale)} · ${time}` },
               ...(professional || team.length > 1
                 ? [
@@ -558,10 +654,26 @@ function BookingWizard({
                 ? [{ label: t("booking.email"), value: details.customer.email }]
                 : []),
               ...details.answers.map((answer) => ({ label: answer.label, value: answer.value })),
+              ...(gift && service.priceAmount !== null
+                ? [
+                    { label: t("booking.price"), value: price(service.priceAmount) },
+                    {
+                      label: t("booking.discountCode", { code: gift.code }),
+                      value: `−${formatPrice(gift.discountAmount, business.currency)}`,
+                    },
+                  ]
+                : []),
             ]}
-            total={price(service.priceAmount)}
+            total={
+              gift && service.priceAmount !== null
+                ? formatPrice(service.priceAmount - gift.discountAmount, business.currency)
+                : price(service.priceAmount)
+            }
             t={t}
           />
+        )}
+        {step === "confirm" && service && (
+          <GiftCodeBox slug={slug} serviceId={service.id} applied={gift} onApply={setGift} t={t} />
         )}
         {step === "confirm" && slowCheck && (
           <p className="mt-4 flex items-center gap-2 text-[13px] text-zinc-500" role="status">
@@ -797,6 +909,7 @@ type TeamMember = PublicCatalog["professionals"][number];
 function DateTimeStep({
   slug,
   catalog,
+  locationId,
   serviceId,
   team,
   preferredId,
@@ -812,6 +925,7 @@ function DateTimeStep({
 }: {
   slug: string;
   catalog: PublicCatalog;
+  locationId: string | null;
   serviceId: string;
   /** Professionals who do this service. */
   team: TeamMember[];
@@ -836,6 +950,7 @@ function DateTimeStep({
   const to = lastOfMonth > lastDate ? lastDate : lastOfMonth;
 
   const availability = useAvailability(slug, {
+    locationId,
     serviceId,
     resourceId: preferredId,
     from,
@@ -989,11 +1104,13 @@ function Summary({
 
 function BookingDone({
   appointment,
+  showLocation,
   t,
   locale,
   onAgain,
 }: {
   appointment: BookedAppointment;
+  showLocation: boolean;
   t: T;
   locale: string;
   onAgain: () => void;
@@ -1014,6 +1131,16 @@ function BookingDone({
       <div className="mt-7 w-full max-w-md text-left">
         <Summary
           rows={[
+            ...(showLocation
+              ? [
+                  {
+                    label: t("booking.location"),
+                    value: [appointment.location.name, appointment.location.address]
+                      .filter(Boolean)
+                      .join(" · "),
+                  },
+                ]
+              : []),
             {
               label: t("booking.date"),
               value: `${formatDay(appointment.date, locale)} · ${appointment.time}`,
@@ -1022,11 +1149,22 @@ function BookingDone({
               ? [{ label: t("booking.professional"), value: appointment.resourceName }]
               : []),
             { label: t("booking.service"), value: appointment.serviceName },
+            ...(appointment.discountAmount > 0
+              ? [
+                  {
+                    label: t("booking.discount"),
+                    value: `−${formatPrice(appointment.discountAmount, appointment.currency)}`,
+                  },
+                ]
+              : []),
           ]}
           total={
             appointment.priceAmount === null
               ? t("services.priceOnRequest")
-              : formatPrice(appointment.priceAmount, appointment.currency)
+              : formatPrice(
+                  appointment.priceAmount - appointment.discountAmount,
+                  appointment.currency,
+                )
           }
           t={t}
         />
@@ -1037,6 +1175,94 @@ function BookingDone({
           {t("booking.bookAgain")}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** "¿Tienes un código de descuento?": checked against the chosen service before booking. */
+function GiftCodeBox({
+  slug,
+  serviceId,
+  applied,
+  onApply,
+  t,
+}: {
+  slug: string;
+  serviceId: string;
+  applied: { code: string; discountAmount: number } | null;
+  onApply: (gift: { code: string; discountAmount: number } | null) => void;
+  t: T;
+}) {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const check = useGiftCodeCheck(slug);
+
+  if (applied) {
+    return (
+      <p className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-brand-50/60 px-4 py-3 text-sm">
+        <span className="text-zinc-700">{t("booking.codeApplied", { code: applied.code })}</span>
+        <button
+          type="button"
+          className="font-medium text-brand-700 hover:underline"
+          onClick={() => onApply(null)}
+        >
+          {t("booking.removeCode")}
+        </button>
+      </p>
+    );
+  }
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="mt-4 text-sm font-medium text-brand-700 hover:underline"
+        onClick={() => setOpen(true)}
+      >
+        {t("booking.haveCode")}
+      </button>
+    );
+  }
+  const apply = () => {
+    if (!code.trim()) return;
+    check.mutate(
+      { code, serviceId },
+      {
+        onSuccess: (result) =>
+          onApply({ code: result.code, discountAmount: result.discountAmount }),
+      },
+    );
+  };
+  const problem =
+    check.error instanceof ApiError
+      ? check.error.code === "gift_card_unusable"
+        ? t(
+            `booking.codeStates.${check.error.fields.code ?? "inactive"}` as "booking.codeStates.inactive",
+          )
+        : check.error.code === "gift_card_not_found"
+          ? t("booking.codeNotFound")
+          : t("errors.unknown_error")
+      : null;
+  return (
+    <div className="mt-4 space-y-2">
+      <div className="flex gap-2">
+        <Input
+          aria-label={t("booking.codePlaceholder")}
+          placeholder={t("booking.codePlaceholder")}
+          className="font-mono uppercase"
+          value={code}
+          onChange={(event) => setCode(event.target.value.toUpperCase())}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              apply();
+            }
+          }}
+        />
+        <Button variant="secondary" onClick={apply} loading={check.isPending}>
+          {t("booking.applyCode")}
+        </Button>
+      </div>
+      {problem && <p className="text-[13px] text-red-600">{problem}</p>}
     </div>
   );
 }

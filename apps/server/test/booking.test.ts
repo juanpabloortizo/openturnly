@@ -309,6 +309,8 @@ describe("public booking", () => {
 
   it("closes several days in a row", async () => {
     const { app, owner, base, haircut } = await barbershop();
+    // Public holidays (a Monday, often) would close days this test expects open.
+    await owner.patch(base, { closedOnHolidays: false });
     const saturday = next(6);
     const monday = addDays(saturday, 2);
     const tuesday = addDays(saturday, 3);

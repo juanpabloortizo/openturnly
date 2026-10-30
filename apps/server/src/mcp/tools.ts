@@ -7,6 +7,7 @@ import {
   closures,
   customers,
   holidayOverrides,
+  locations,
   resources,
   services,
   weeklyHours,
@@ -18,6 +19,7 @@ import {
   staffRules,
 } from "../lib/appointment-changes.ts";
 import { businessCountry, holidaysBetween } from "../lib/holidays.ts";
+import { listLocations, resolveLocation } from "../lib/locations.ts";
 import { bookingRules, loadSchedules } from "../lib/schedules.ts";
 import { registerAdminTools } from "./admin-tools.ts";
 import {
@@ -34,6 +36,9 @@ import {
 export const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
 export const time = z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM, 24-hour clock");
 export const id = z.string().min(1);
+const locationId = id
+  .optional()
+  .describe("The location (see get_business_info); needed when the business has several");
 const contact = z
   .string()
   .min(3)
@@ -53,6 +58,7 @@ type Catalog = {
     active?: boolean;
   }[];
   professionals: { id: string; name: string; serviceIds: string[]; active?: boolean }[];
+  locations?: { id: string; name: string; serviceIds: string[] }[];
 };
 
 /**
@@ -102,11 +108,13 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
 
   /** Free start times, with who is free at each: customers' rules for agents, staff rules for admins. */
   const freeTimes = async (
+    locationIdArg: string | undefined,
     serviceId: string,
     professionalId: string | undefined,
     from: string,
     to: string,
   ) => {
+    const location = await resolveLocation(db, business.id, locationIdArg, { forBooking: true });
     const [service] = await db
       .select()
       .from(services)
@@ -129,6 +137,7 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
     const schedules = await loadSchedules(
       db,
       business,
+      location.id,
       service.id,
       professionalId ?? null,
       from,
@@ -137,6 +146,7 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
     const rules = admin ? staffRules(business) : bookingRules(business);
     const slots = slotsBetween(from, to, service.durationMin, schedules, rules, Date.now());
     return {
+      location: { id: location.id, name: location.name },
       service: { id: service.id, name: service.name, duration_minutes: service.durationMin },
       days: Object.entries(slots).map(([day, list]) => ({
         date: day,
@@ -176,21 +186,33 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
     {
       title: "Business information",
       description:
-        "Name, contact details, opening hours, upcoming closures and holidays, booking rules and the details a booking needs. Call this first: it also gives today's date in the business's time zone.",
+        "Name, contact details, locations with their opening hours, upcoming closures and holidays, booking rules and the details a booking needs. Call this first: it also gives today's date in the business's time zone. When there are several locations, ask the customer which one they want.",
       input: z.object({}),
       readOnly: true,
     },
     async () => {
       const day = today();
       const horizon = addDays(day, 60);
+      const places = (await listLocations(db, business.id)).filter((place) => place.active);
       const hours = await db
-        .select({ weekday: weeklyHours.weekday, start: weeklyHours.start, end: weeklyHours.end })
+        .select({
+          locationId: weeklyHours.locationId,
+          weekday: weeklyHours.weekday,
+          start: weeklyHours.start,
+          end: weeklyHours.end,
+        })
         .from(weeklyHours)
         .where(and(eq(weeklyHours.businessId, business.id), isNull(weeklyHours.resourceId)))
         .orderBy(asc(weeklyHours.weekday), asc(weeklyHours.start));
       const closed = await db
-        .select({ from: closures.date, to: closures.endDate, note: closures.note })
+        .select({
+          from: closures.date,
+          to: closures.endDate,
+          location: locations.name,
+          note: closures.note,
+        })
         .from(closures)
+        .leftJoin(locations, eq(locations.id, closures.locationId))
         .where(
           and(
             eq(closures.businessId, business.id),
@@ -200,6 +222,16 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
           ),
         )
         .orderBy(asc(closures.date));
+      const openingHours = (locationId: string | undefined) =>
+        [1, 2, 3, 4, 5, 6, 0].map((weekday) => {
+          const ranges = hours.filter(
+            (range) => range.locationId === locationId && range.weekday === weekday,
+          );
+          return {
+            day: weekdayName(addDays(A_SUNDAY, weekday), business.locale),
+            hours: ranges.length > 0 ? ranges.map((r) => `${r.start}-${r.end}`) : "closed",
+          };
+        });
       const country = businessCountry(business);
       const overrides = new Set(
         (
@@ -223,14 +255,20 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
         today_weekday: weekdayName(day, business.locale),
         currency: business.currency,
         language: business.locale,
-        opening_hours: [1, 2, 3, 4, 5, 6, 0].map((weekday) => {
-          const ranges = hours.filter((range) => range.weekday === weekday);
-          return {
-            day: weekdayName(addDays(A_SUNDAY, weekday), business.locale),
-            hours: ranges.length > 0 ? ranges.map((r) => `${r.start}-${r.end}`) : "closed",
-          };
-        }),
-        upcoming_closures: closed,
+        // The first location's hours, as before locations existed.
+        opening_hours: openingHours(places[0]?.id),
+        locations: places.map((place) => ({
+          id: place.id,
+          name: place.name,
+          address: place.address ?? business.address,
+          phone: place.phone ?? business.phone,
+          opening_hours: openingHours(place.id),
+        })),
+        // A closure without a location closes every location.
+        upcoming_closures: closed.map((closure) => ({
+          ...closure,
+          location: closure.location ?? "all",
+        })),
         upcoming_holidays: holidays.map((holiday) => ({
           ...holiday,
           open: business.closedOnHolidays === overrides.has(holiday.date),
@@ -276,6 +314,13 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
         professionals: catalog.professionals
           .filter((member) => member.serviceIds.includes(service.id))
           .map((member) => ({ id: member.id, name: member.name })),
+        ...(catalog.locations
+          ? {
+              locations: catalog.locations
+                .filter((place) => place.serviceIds.includes(service.id))
+                .map((place) => ({ id: place.id, name: place.name })),
+            }
+          : {}),
       }));
     },
   );
@@ -310,6 +355,7 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
       title: "Free times",
       description: `Free start times for a service on a date (or up to ${MAX_SEARCH_DAYS} days), and which professionals are free at each time. Dates and times are in the business's time zone.`,
       input: z.object({
+        location_id: locationId,
         service_id: id,
         date,
         until_date: date.optional().describe("Last date to include; defaults to `date`"),
@@ -322,7 +368,13 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
       if (until < args.date || until > addDays(args.date, MAX_SEARCH_DAYS - 1)) {
         throw new ToolError("invalid_range");
       }
-      const result = await freeTimes(args.service_id, args.professional_id, args.date, until);
+      const result = await freeTimes(
+        args.location_id,
+        args.service_id,
+        args.professional_id,
+        args.date,
+        until,
+      );
       return result.days.length > 0
         ? result
         : {
@@ -339,6 +391,7 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
       description:
         "The first day with free times for a service (optionally with one professional), and that day's times. Use it when the customer asks for the soonest appointment.",
       input: z.object({
+        location_id: locationId,
         service_id: id,
         professional_id: id.optional(),
         from_date: date.optional().describe("Start looking on this date; defaults to today"),
@@ -349,11 +402,21 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
       const from = args.from_date ?? today();
       const to = addDays(today(), admin ? 90 : business.maxAdvanceDays);
       if (from > to) return { note: "That date is beyond how far ahead bookings are taken." };
-      const result = await freeTimes(args.service_id, args.professional_id, from, to);
+      const result = await freeTimes(
+        args.location_id,
+        args.service_id,
+        args.professional_id,
+        from,
+        to,
+      );
       const [first] = result.days;
       return first
-        ? { service: result.service, ...first }
-        : { service: result.service, note: `No free times until ${to}.` };
+        ? { location: result.location, service: result.service, ...first }
+        : {
+            location: result.location,
+            service: result.service,
+            note: `No free times until ${to}.`,
+          };
     },
   );
 
@@ -377,6 +440,7 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
         description:
           "Books an appointment for a customer: an existing one (customer_id) or new details, matched to existing customers by phone or email. The business's own rules apply (opening hours, other bookings), not the customers' minimum notice. Returns the booking code.",
         input: z.object({
+          location_id: locationId,
           service_id: id,
           date,
           time,
@@ -390,6 +454,7 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
           "POST",
           `${base}/appointments`,
           {
+            locationId: args.location_id,
             serviceId: args.service_id,
             resourceId: args.professional_id ?? null,
             date: args.date,
@@ -417,6 +482,7 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
         description:
           "Books an appointment for the customer at a free time (see find_available_times), with the same rules as the booking page. Confirm the service, date, time and their details with the customer first. Returns the booking code: give it to the customer.",
         input: z.object({
+          location_id: locationId,
           service_id: id,
           date,
           time,
@@ -434,6 +500,7 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
         const { appointment } = await call<{
           appointment: Parameters<typeof appointmentView>[1];
         }>("POST", `${publicBase}/bookings`, {
+          locationId: args.location_id,
           serviceId: args.service_id,
           resourceId: args.professional_id ?? null,
           date: args.date,
@@ -483,11 +550,12 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
       {
         title: "Move an appointment",
         description:
-          "Moves an appointment to another date and time, and optionally another professional or service. Keeps the same professional unless professional_id is given ('any' for whoever is free).",
+          "Moves an appointment to another date and time, and optionally another location, professional or service. Keeps the same location and professional unless location_id or professional_id is given ('any' for whoever is free).",
         input: z.object({
           code: id,
           date,
           time,
+          location_id: id.optional(),
           professional_id: id.optional(),
           service_id: id.optional(),
         }),
@@ -498,6 +566,7 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
           "PATCH",
           `${base}/appointments/${appointment.id}`,
           {
+            locationId: args.location_id,
             serviceId: args.service_id ?? appointment.serviceId,
             resourceId:
               args.professional_id === "any"
@@ -583,12 +652,16 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
           ? await db.select().from(services).where(eq(services.id, appointment.serviceId))
           : [];
         if (!service) throw new ToolError("service_not_found");
+        const location = await resolveLocation(db, business.id, appointment.locationId, {
+          forBooking: false,
+        });
         const moved = await moveAppointment(
           db,
           business,
           appointment,
           service,
           {
+            locationId: location.id,
             resourceId:
               args.professional_id === "any"
                 ? null

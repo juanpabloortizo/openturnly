@@ -4,7 +4,13 @@ import type {
   AutomationTrigger,
   BookingAnswer,
   BookingForm,
+  GiftCardKind,
   PageTheme,
+  PaymentMethod,
+  ProductUnit,
+  SaleItemKind,
+  SalePaymentMethod,
+  StockMovementKind,
 } from "@openturnly/core";
 
 /** Error returned by the OpenTurnly API or by Better Auth, normalized to a lowercase code. */
@@ -98,6 +104,8 @@ export type Service = {
   durationMin: number;
   priceAmount: number | null;
   active: boolean;
+  /** Locations that offer it. */
+  locationIds: string[];
 };
 
 export type Professional = {
@@ -105,7 +113,25 @@ export type Professional = {
   name: string;
   active: boolean;
   serviceIds: string[];
+  /** Locations they work at. */
+  locationIds: string[];
   hasOwnHours: boolean;
+  /** Percent of the services and products they sell that is theirs. */
+  serviceCommission: number;
+  productCommission: number;
+};
+
+/** A place the business works from, with what it offers and who works there. */
+export type Location = {
+  id: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  active: boolean;
+  serviceIds: string[];
+  resourceIds: string[];
+  /** Appointments booked there: a location with history can't be deleted. */
+  appointmentCount: number;
 };
 
 export type WeeklyRange = { weekday: number; start: string; end: string };
@@ -115,6 +141,8 @@ export type Closure = {
   id: string;
   date: string;
   endDate: string;
+  /** One location; null with no professional closes every location. */
+  locationId: string | null;
   resourceId: string | null;
   note: string | null;
 };
@@ -128,6 +156,8 @@ export type Appointment = {
   startsAt: string;
   endsAt: string;
   status: "confirmed" | "cancelled";
+  locationId: string | null;
+  locationName: string | null;
   serviceId: string | null;
   serviceName: string;
   resourceId: string | null;
@@ -139,6 +169,13 @@ export type Appointment = {
   createdAt: string;
   cancelledAt: string | null;
   answers: BookingAnswer[];
+  /** Taken off by the discount code used to book it (`giftCode`). */
+  discountAmount: number;
+  giftCode: string | null;
+  /** The sale that charged it, if it was charged. */
+  sale: { id: string; number: number } | null;
+  /** Deposits left for it and not used yet. */
+  depositAmount: number;
   customer: {
     id: string;
     firstName: string;
@@ -172,8 +209,19 @@ export type PublicBusiness = Pick<
 
 export type PublicCatalog = {
   business: PublicBusiness;
-  services: Omit<Service, "active">[];
+  services: Omit<Service, "active" | "locationIds">[];
   professionals: { id: string; name: string; serviceIds: string[] }[];
+  /** Locations taking bookings, with what each offers and who works there. */
+  locations: PublicLocation[];
+};
+
+export type PublicLocation = {
+  id: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  serviceIds: string[];
+  professionalIds: string[];
 };
 
 export type BookedAppointment = {
@@ -187,7 +235,131 @@ export type BookedAppointment = {
   serviceName: string;
   resourceName: string | null;
   priceAmount: number | null;
+  discountAmount: number;
   currency: string;
+  location: { name: string; address: string | null };
+};
+
+export type Sale = {
+  id: string;
+  /** 1, 2, 3… per business. */
+  number: number;
+  status: "paid" | "void";
+  internal: boolean;
+  locationId: string | null;
+  locationName: string | null;
+  subtotal: number;
+  discountAmount: number;
+  total: number;
+  tipAmount: number;
+  note: string | null;
+  createdAt: string;
+  voidedAt: string | null;
+  soldByName: string | null;
+  customer: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    phone: string | null;
+    email: string | null;
+  } | null;
+  items: {
+    id: string;
+    kind: SaleItemKind;
+    appointmentId: string | null;
+    serviceId: string | null;
+    giftCardId: string | null;
+    productId: string | null;
+    name: string;
+    resourceId: string | null;
+    resourceName: string | null;
+    quantity: number;
+    unitPrice: number;
+    discountAmount: number;
+    total: number;
+  }[];
+  tips: { id: string; resourceId: string | null; resourceName: string; amount: number }[];
+  payments: {
+    id: string;
+    method: SalePaymentMethod;
+    amount: number;
+    depositId: string | null;
+    giftCardId: string | null;
+  }[];
+};
+
+/** Something the business sells or uses, with its stock at each location. */
+export type Product = {
+  id: string;
+  name: string;
+  sku: string | null;
+  category: string | null;
+  brand: string | null;
+  format: string | null;
+  content: number | null;
+  unit: ProductUnit;
+  priceAmount: number;
+  costAmount: number | null;
+  minStock: number;
+  forSale: boolean;
+  active: boolean;
+  /** Units by location id. */
+  stock: Record<string, number>;
+};
+
+export type StockMovement = {
+  id: string;
+  kind: StockMovementKind;
+  quantity: number;
+  balanceAfter: number;
+  unitCost: number | null;
+  note: string | null;
+  createdAt: string;
+  productId: string;
+  productName: string;
+  locationId: string;
+  locationName: string;
+  sale: { id: string; number: number } | null;
+  createdByName: string | null;
+};
+
+/** A discount code or a gift card with a balance, with how it was used. */
+export type GiftCard = {
+  id: string;
+  code: string;
+  kind: GiftCardKind;
+  percent: number | null;
+  amount: number | null;
+  maxUses: number | null;
+  validFrom: string | null;
+  validUntil: string | null;
+  note: string | null;
+  active: boolean;
+  createdAt: string;
+  uses: number;
+  spent: number;
+  /** Gift cards: what's left on it. */
+  remaining: number | null;
+  state: "active" | "inactive" | "scheduled" | "expired" | "used_up" | "spent";
+  customer: { id: string; firstName: string; lastName: string } | null;
+};
+
+/** Money a customer left in advance ("abono"). */
+export type Deposit = {
+  id: string;
+  amount: number;
+  method: PaymentMethod;
+  note: string | null;
+  status: "active" | "void";
+  createdAt: string;
+  voidedAt: string | null;
+  appointmentId: string | null;
+  appointmentCode: string | null;
+  locationId: string | null;
+  locationName: string | null;
+  /** The sale it paid for, once used. */
+  appliedSale: { id: string; number: number } | null;
+  customer: { id: string; firstName: string; lastName: string };
 };
 
 /** A row of the customer list. */

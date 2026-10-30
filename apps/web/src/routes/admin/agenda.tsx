@@ -13,6 +13,7 @@ import {
 } from "@openturnly/core";
 import {
   ArrowUpRight,
+  Banknote,
   CalendarClock,
   CheckCircle2,
   ChevronLeft,
@@ -36,23 +37,36 @@ import {
 } from "../../components/date-range-picker.tsx";
 import { RangeCalendar } from "../../components/range-calendar.tsx";
 import { toast } from "../../components/toast.tsx";
-import { Alert, Button, buttonClass, Card, Field, Select, Spinner } from "../../components/ui.tsx";
+import {
+  Alert,
+  Badge,
+  Button,
+  buttonClass,
+  Card,
+  Field,
+  Select,
+  Spinner,
+} from "../../components/ui.tsx";
 import type { Appointment, WeeklyRange } from "../../lib/api.ts";
 import { useProtection } from "../../lib/businesses.ts";
 import {
   useAppointmentSlots,
   useAppointments,
   useCancelAppointment,
-  useHours,
+  useHoursAt,
+  useLocations,
   useProfessionals,
   useRescheduleAppointment,
   useServices,
 } from "../../lib/catalog.ts";
 import { cn } from "../../lib/cn.ts";
 import { errorMessage } from "../../lib/forms.ts";
+import { useSale } from "../../lib/sales.ts";
 import { AppointmentsList, bookedVia } from "./appointments-list.tsx";
 import { publicUrl, useBusinessContext } from "./business.tsx";
+import { CheckoutModal, DepositModal } from "./checkout.tsx";
 import { NewAppointmentForm } from "./new-appointment.tsx";
+import { SaleDetails } from "./sales.tsx";
 
 /** One per professional on the calendar, starting with OpenTurnly's petrol. */
 const COLORS = ["#0f766e", "#0284c7", "#d97706", "#db2777", "#65a30d", "#7c3aed", "#475569"];
@@ -80,12 +94,25 @@ export function AgendaPage() {
   const [title, setTitle] = useState("");
   const [range, setRange] = useState<{ from: string; to: string } | null>(null);
   const [resourceFilter, setResourceFilter] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
   const [selected, setSelected] = useState<Appointment | null>(null);
 
   const appointments = useAppointments(business.id, range);
   const professionals = useProfessionals(business.id);
   const services = useServices(business.id);
-  const hours = useHours(business.id);
+  const locations = useLocations(business.id);
+  // Professionals only pick among the locations they work at.
+  const places = (locations.data ?? []).filter(
+    (location) =>
+      !isProfessional || location.resourceIds.includes(business.access.resourceId ?? ""),
+  );
+  const severalLocations = (locations.data?.length ?? 0) > 1;
+  const hours = useHoursAt(
+    business.id,
+    places
+      .filter((location) => !locationFilter || location.id === locationFilter)
+      .map((location) => location.id),
+  );
 
   const colorOf = useMemo(() => {
     const ids = professionals.data?.map((professional) => professional.id) ?? [];
@@ -100,6 +127,7 @@ export function AgendaPage() {
 
   const events: EventInput[] = (appointments.data ?? [])
     .filter((appointment) => !resourceFilter || appointment.resourceId === resourceFilter)
+    .filter((appointment) => !locationFilter || appointment.locationId === locationFilter)
     .map((appointment) => {
       const color = colorOf(appointment.resourceId);
       return {
@@ -115,10 +143,12 @@ export function AgendaPage() {
       };
     });
 
-  const allRanges = [
-    ...(hours.data?.business ?? []),
-    ...Object.values(hours.data?.professionals ?? {}).flat(),
-  ];
+  // The opening hours of the locations shown, shaded on the calendar.
+  const openRanges = Object.values(hours ?? {}).flatMap((at) => at.business);
+  const allRanges = Object.values(hours ?? {}).flatMap((at) => [
+    ...at.business,
+    ...Object.values(at.professionals).flat(),
+  ]);
   const { slotMinTime, slotMaxTime } = visibleHours(allRanges, events);
 
   const onDatesSet = (info: DatesSetArg) => {
@@ -198,7 +228,7 @@ export function AgendaPage() {
 
       {services.data && !hasServices && (
         <GettingStarted
-          hasHours={(hours.data?.business.length ?? 0) > 0}
+          hasHours={openRanges.length > 0}
           hasProfessionals={(professionals.data?.length ?? 0) > 0}
         />
       )}
@@ -256,6 +286,21 @@ export function AgendaPage() {
             </div>
           )}
           <div className="flex flex-wrap items-center gap-2">
+            {places.length > 1 && (
+              <Select
+                aria-label={t("locations.pick")}
+                value={locationFilter}
+                onChange={(event) => setLocationFilter(event.target.value)}
+                className="w-48 [&_select]:h-8 [&_select]:text-[13px]"
+              >
+                <option value="">{t("locations.all")}</option>
+                {places.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </Select>
+            )}
             {!isProfessional && (professionals.data?.length ?? 0) > 0 && (
               <Select
                 aria-label={t("agenda.filterProfessional")}
@@ -297,7 +342,13 @@ export function AgendaPage() {
           </div>
         </div>
         {view === "list" ? (
-          <AppointmentsList period={period} resourceFilter={resourceFilter} onOpen={setSelected} />
+          <AppointmentsList
+            period={period}
+            resourceFilter={resourceFilter}
+            locationFilter={locationFilter}
+            showLocation={severalLocations}
+            onOpen={setSelected}
+          />
         ) : (
           <>
             {appointments.isError && (
@@ -328,7 +379,7 @@ export function AgendaPage() {
                 slotEventOverlap={false}
                 slotLabelInterval="01:00"
                 dayHeaderFormat={{ weekday: "short", day: "numeric" }}
-                businessHours={(hours.data?.business ?? []).map((range) => ({
+                businessHours={openRanges.map((range) => ({
                   daysOfWeek: [range.weekday],
                   startTime: range.start,
                   endTime: range.end,
@@ -348,7 +399,12 @@ export function AgendaPage() {
       </Card>
 
       {selected && <AppointmentDetails appointment={selected} onClose={() => setSelected(null)} />}
-      {creating && <NewAppointmentForm onClose={() => setCreating(false)} />}
+      {creating && (
+        <NewAppointmentForm
+          locationId={locationFilter || null}
+          onClose={() => setCreating(false)}
+        />
+      )}
     </>
   );
 }
@@ -456,7 +512,10 @@ function AppointmentDetails({
   const confirm = useConfirm();
   const cancel = useCancelAppointment(business.id);
   const [editing, setEditing] = useState(false);
+  // Charging it, leaving a deposit, or looking at the sale that charged it.
+  const [payment, setPayment] = useState<"charge" | "deposit" | "sale" | null>(null);
   const isProfessional = business.access.role === "professional";
+  const severalLocations = (useLocations(business.id).data?.length ?? 0) > 1;
   const start = instantToZoned(Date.parse(appointment.startsAt), business.timezone);
   const end = instantToZoned(Date.parse(appointment.endsAt), business.timezone);
   const day = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
@@ -472,6 +531,9 @@ function AppointmentDetails({
     { label: t("booking.code"), value: appointment.code },
     ...(cancelled ? [{ label: t("agenda.colStatus"), value: t("agenda.statusCancelled") }] : []),
     { label: t("booking.date"), value: `${day}, ${start.time} – ${end.time}` },
+    ...(appointment.locationName && severalLocations
+      ? [{ label: t("booking.location"), value: appointment.locationName }]
+      : []),
     { label: t("booking.service"), value: appointment.serviceName },
     ...(appointment.resourceName
       ? [{ label: t("booking.professional"), value: appointment.resourceName }]
@@ -483,6 +545,14 @@ function AppointmentDetails({
           ? t("services.priceOnRequest")
           : formatPrice(appointment.priceAmount, business.currency),
     },
+    ...(appointment.discountAmount > 0
+      ? [
+          {
+            label: t("booking.discountCode", { code: appointment.giftCode ?? "" }),
+            value: `−${formatPrice(appointment.discountAmount, business.currency)}`,
+          },
+        ]
+      : []),
     // Answers to the business's own questions.
     ...appointment.answers.map((answer) => ({ label: answer.label, value: answer.value })),
     { label: t("agenda.bookedVia"), value: bookedVia(t, appointment) },
@@ -509,6 +579,12 @@ function AppointmentDetails({
     return (
       <RescheduleForm appointment={appointment} onBack={() => setEditing(false)} onDone={onClose} />
     );
+  }
+  // One dialog at a time: these take the details' place.
+  if (payment === "charge") return <CheckoutModal appointment={appointment} onClose={onClose} />;
+  if (payment === "deposit") return <DepositModal appointment={appointment} onClose={onClose} />;
+  if (payment === "sale" && appointment.sale) {
+    return <SaleById saleId={appointment.sale.id} onClose={onClose} />;
   }
 
   return (
@@ -565,6 +641,45 @@ function AppointmentDetails({
           </div>
         ))}
       </dl>
+      {!isProfessional && !cancelled && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 px-4 py-3">
+          {appointment.sale ? (
+            <>
+              <span className="flex items-center gap-2 text-sm">
+                <Badge tone="success">{t("checkout.paid")}</Badge>
+                <span className="text-zinc-600">
+                  {t("checkout.paidIn", { number: appointment.sale.number })}
+                </span>
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => setPayment("sale")}>
+                {t("checkout.viewSale")}
+              </Button>
+            </>
+          ) : (
+            <>
+              <div className="text-sm">
+                <div className="font-medium text-zinc-900">{t("checkout.unpaid")}</div>
+                {appointment.depositAmount > 0 && (
+                  <div className="text-[13px] text-zinc-500">
+                    {t("checkout.depositLeft", {
+                      amount: formatPrice(appointment.depositAmount, business.currency),
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button variant="secondary" size="sm" onClick={() => setPayment("deposit")}>
+                  {t("deposits.new")}
+                </Button>
+                <Button size="sm" onClick={() => setPayment("charge")}>
+                  <Banknote className="size-4" aria-hidden />
+                  {t("checkout.chargeShort")}
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
         {customer.phone && (
           <a
@@ -606,20 +721,34 @@ function RescheduleForm({
   const { business } = useBusinessContext();
   const services = useServices(business.id);
   const professionals = useProfessionals(business.id);
+  const locations = useLocations(business.id);
   const reschedule = useRescheduleAppointment(business.id);
   const isProfessional = business.access.role === "professional";
+  const places = (locations.data ?? []).filter(
+    (location) =>
+      (location.active || location.id === appointment.locationId) &&
+      (!isProfessional || location.resourceIds.includes(business.access.resourceId ?? "")),
+  );
   const current = instantToZoned(Date.parse(appointment.startsAt), business.timezone);
   const today = todayIn(business.timezone);
   const [date, setDate] = useState(current.date < today ? today : current.date);
+  const [locationId, setLocationId] = useState(appointment.locationId);
+  const location = places.find((place) => place.id === locationId);
   const [serviceId, setServiceId] = useState(
     appointment.serviceId ?? services.data?.[0]?.id ?? null,
   );
   const [resourceId, setResourceId] = useState(appointment.resourceId);
   const [time, setTime] = useState<string | null>(current.date === date ? current.time : null);
-  const slots = useAppointmentSlots(business.id, appointment.id, serviceId, date);
+  const slots = useAppointmentSlots(business.id, appointment.id, locationId, serviceId, date);
 
+  const offered = (services.data ?? []).filter(
+    (service) => !location || location.serviceIds.includes(service.id),
+  );
   const team = (professionals.data ?? []).filter(
-    (professional) => serviceId && professional.serviceIds.includes(serviceId),
+    (professional) =>
+      serviceId &&
+      professional.serviceIds.includes(serviceId) &&
+      (!location || location.resourceIds.includes(professional.id)),
   );
   const times = (slots.data ?? []).filter(
     (slot) => resourceId === null || slot.resourceIds.includes(resourceId),
@@ -629,7 +758,14 @@ function RescheduleForm({
   const save = () => {
     if (!serviceId || !time) return;
     reschedule.mutate(
-      { id: appointment.id, serviceId, resourceId, date, time },
+      {
+        id: appointment.id,
+        locationId: locationId ?? undefined,
+        serviceId,
+        resourceId,
+        date,
+        time,
+      },
       {
         onSuccess: () => {
           toast.success(t("agenda.rescheduled"));
@@ -672,6 +808,38 @@ function RescheduleForm({
         />
         <div className="min-w-0 space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
+            {places.length > 1 && (
+              <Field label={t("locations.pick")} className="sm:col-span-2">
+                {(props) => (
+                  <Select
+                    {...props}
+                    value={locationId ?? ""}
+                    onChange={(event) => {
+                      const next = places.find((place) => place.id === event.target.value);
+                      setLocationId(event.target.value);
+                      // Keep what still fits at the new location.
+                      if (next && serviceId && !next.serviceIds.includes(serviceId)) {
+                        setServiceId(next.serviceIds[0] ?? null);
+                      }
+                      if (
+                        !isProfessional &&
+                        resourceId &&
+                        !next?.resourceIds.includes(resourceId)
+                      ) {
+                        setResourceId(null);
+                      }
+                      setTime(null);
+                    }}
+                  >
+                    {places.map((place) => (
+                      <option key={place.id} value={place.id}>
+                        {place.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            )}
             <Field label={t("booking.service")}>
               {(props) => (
                 <Select
@@ -682,7 +850,7 @@ function RescheduleForm({
                     setTime(null);
                   }}
                 >
-                  {services.data?.map((service) => (
+                  {offered.map((service) => (
                     <option key={service.id} value={service.id}>
                       {service.name}
                     </option>
@@ -754,4 +922,12 @@ function RescheduleForm({
       </div>
     </Modal>
   );
+}
+
+/** A sale opened from the calendar, loaded by its id. */
+function SaleById({ saleId, onClose }: { saleId: string; onClose: () => void }) {
+  const { business } = useBusinessContext();
+  const sale = useSale(business.id, saleId);
+  if (!sale.data) return null;
+  return <SaleDetails sale={sale.data} onClose={onClose} />;
 }

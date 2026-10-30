@@ -29,6 +29,8 @@ import {
   businesses,
   type Customer,
   customers,
+  type Location,
+  locations,
 } from "../db/schema.ts";
 import { isInternalAddress } from "./client-ip.ts";
 
@@ -59,12 +61,13 @@ type AppointmentWithCustomer = {
     | "sourceLabel"
   >;
   customer: Pick<Customer, "firstName" | "lastName" | "phone" | "email">;
+  location?: Pick<Location, "name" | "address"> | null;
 };
 
 /** Every value an automation can send about one appointment, by group as placeholders name them. */
 export function automationValues(
   business: Business,
-  { appointment, customer }: AppointmentWithCustomer,
+  { appointment, customer, location }: AppointmentWithCustomer,
   event: string,
   appUrl: string,
   previousStartsAt?: Date,
@@ -99,6 +102,8 @@ export function automationValues(
         (appointment.endsAt.getTime() - appointment.startsAt.getTime()) / 60_000,
       ),
       professional: appointment.resourceName,
+      location: location?.name ?? null,
+      location_address: location?.address ?? business.address,
       price:
         appointment.priceAmount === null
           ? null
@@ -212,10 +217,16 @@ export type Automations = ReturnType<typeof createAutomations>;
 export function createAutomations({ db, config }: { db: Db; config: Config }) {
   const loadAppointment = async (appointmentId: string) => {
     const [row] = await db
-      .select({ appointment: appointments, customer: customers, business: businesses })
+      .select({
+        appointment: appointments,
+        customer: customers,
+        business: businesses,
+        location: locations,
+      })
       .from(appointments)
       .innerJoin(customers, eq(customers.id, appointments.customerId))
       .innerJoin(businesses, eq(businesses.id, appointments.businessId))
+      .leftJoin(locations, eq(locations.id, appointments.locationId))
       .where(eq(appointments.id, appointmentId));
     return row ?? null;
   };
@@ -416,10 +427,16 @@ export function createAutomations({ db, config }: { db: Db; config: Config }) {
               lte(appointments.endsAt, new Date(now - offset)),
             );
         const due = await db
-          .select({ appointment: appointments, customer: customers, business: businesses })
+          .select({
+            appointment: appointments,
+            customer: customers,
+            business: businesses,
+            location: locations,
+          })
           .from(appointments)
           .innerJoin(customers, eq(customers.id, appointments.customerId))
           .innerJoin(businesses, eq(businesses.id, appointments.businessId))
+          .leftJoin(locations, eq(locations.id, appointments.locationId))
           .where(
             and(
               eq(appointments.businessId, automation.businessId),
@@ -576,6 +593,7 @@ function sampleValues(business: Business, event: string, appUrl: string) {
         phone: "+573001234567",
         email: "ana@example.com",
       },
+      location: { name: business.name, address: business.address },
     },
     event,
     appUrl,

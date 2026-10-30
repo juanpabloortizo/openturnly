@@ -1,8 +1,9 @@
 import { serviceSchema } from "@openturnly/core";
-import { and, asc, eq, max } from "drizzle-orm";
+import { and, asc, eq, inArray, max } from "drizzle-orm";
 import { Hono } from "hono";
-import { resourceServices, resources, services } from "../db/schema.ts";
+import { locationServices, resourceServices, resources, services } from "../db/schema.ts";
 import { apiError, type BusinessEnv, type Deps, parseBody } from "../lib/http.ts";
+import { allLocationIds, setServiceLocations } from "../lib/locations.ts";
 
 export function serviceRoutes({ db }: Deps) {
   const findService = async (businessId: string, serviceId: string) => {
@@ -21,12 +22,31 @@ export function serviceRoutes({ db }: Deps) {
         .from(services)
         .where(eq(services.businessId, c.get("business").id))
         .orderBy(asc(services.position), asc(services.name));
-      return c.json({ services: rows });
+      const places =
+        rows.length > 0
+          ? await db
+              .select()
+              .from(locationServices)
+              .where(
+                inArray(
+                  locationServices.serviceId,
+                  rows.map((service) => service.id),
+                ),
+              )
+          : [];
+      return c.json({
+        services: rows.map((service) => ({
+          ...service,
+          locationIds: places
+            .filter((place) => place.serviceId === service.id)
+            .map((place) => place.locationId),
+        })),
+      });
     })
 
     .post("/", async (c) => {
       const business = c.get("business");
-      const input = await parseBody(c, serviceSchema);
+      const { locationIds, ...input } = await parseBody(c, serviceSchema);
       const service = await db.transaction(async (tx) => {
         const [last] = await tx
           .select({ position: max(services.position) })
@@ -47,19 +67,29 @@ export function serviceRoutes({ db }: Deps) {
             .insert(resourceServices)
             .values(team.map((resource) => ({ resourceId: resource.id, serviceId: created.id })));
         }
+        await setServiceLocations(
+          tx,
+          business.id,
+          created.id,
+          locationIds ?? (await allLocationIds(tx, business.id)),
+        );
         return created;
       });
       return c.json({ service }, 201);
     })
 
     .patch("/:serviceId", async (c) => {
-      const current = await findService(c.get("business").id, c.req.param("serviceId"));
-      const input = await parseBody(c, serviceSchema.partial());
-      const [service] = await db
-        .update(services)
-        .set(input)
-        .where(eq(services.id, current.id))
-        .returning();
+      const businessId = c.get("business").id;
+      const current = await findService(businessId, c.req.param("serviceId"));
+      const { locationIds, ...input } = await parseBody(c, serviceSchema.partial());
+      const service = await db.transaction(async (tx) => {
+        const [updated] =
+          Object.keys(input).length > 0
+            ? await tx.update(services).set(input).where(eq(services.id, current.id)).returning()
+            : [current];
+        if (locationIds) await setServiceLocations(tx, businessId, current.id, locationIds);
+        return updated;
+      });
       return c.json({ service });
     })
 

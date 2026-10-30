@@ -444,7 +444,7 @@ describe("automations", () => {
     expect(await engine.deliverDue()).toBe(2);
     const all = first.received[0]?.json as Record<string, Record<string, unknown>>;
     expect(Object.keys(all)).toEqual(["event", "appointment", "customer", "business"]);
-    expect(Object.keys(all.appointment ?? {})).toHaveLength(18);
+    expect(Object.keys(all.appointment ?? {})).toHaveLength(20);
     expect(all.customer).toMatchObject({ name: "Ana Pérez", phone_digits: "573001234567" });
     expect(Object.keys(all.business ?? {})).toEqual([
       "name",

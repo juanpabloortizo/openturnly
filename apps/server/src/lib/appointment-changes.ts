@@ -32,7 +32,7 @@ export async function moveAppointment(
   business: Business,
   current: Appointment,
   service: Service,
-  input: { resourceId: string | null; date: string; time: string },
+  input: { locationId: string; resourceId: string | null; date: string; time: string },
   rules: BookingRules,
 ): Promise<Appointment> {
   return db.transaction(async (tx) => {
@@ -40,6 +40,7 @@ export async function moveAppointment(
     const schedules = await loadSchedules(
       tx,
       business,
+      input.locationId,
       service.id,
       input.resourceId,
       input.date,
@@ -61,6 +62,7 @@ export async function moveAppointment(
     const [updated] = await tx
       .update(appointments)
       .set({
+        locationId: input.locationId,
         serviceId: service.id,
         serviceName: service.name,
         // The price agreed at booking stays unless the service itself changes.

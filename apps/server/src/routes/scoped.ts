@@ -5,11 +5,19 @@ import { apiError, type BusinessEnv, type Deps, requireUser } from "../lib/http.
 import { apiKeyRoutes } from "./api-keys.ts";
 import { appointmentRoutes } from "./appointments.ts";
 import { automationRoutes } from "./automations.ts";
+import { cashRoutes } from "./cash.ts";
 import { customerRoutes } from "./customers.ts";
+import { depositRoutes } from "./deposits.ts";
+import { giftCardRoutes } from "./gift-cards.ts";
 import { hoursRoutes } from "./hours.ts";
 import { imageRoutes } from "./images.ts";
+import { locationRoutes } from "./locations.ts";
+import { productRoutes } from "./products.ts";
 import { professionalRoutes } from "./professionals.ts";
+import { reportRoutes } from "./reports.ts";
+import { saleRoutes } from "./sales.ts";
 import { serviceRoutes } from "./services.ts";
+import { stockRoutes } from "./stock.ts";
 
 /**
  * What a professional may call: their own agenda (the appointment routes narrow it to
@@ -25,6 +33,7 @@ const PROFESSIONAL_ROUTES: [string, RegExp][] = [
   ["GET", /^\/services$/],
   ["GET", /^\/professionals$/],
   ["GET", /^\/hours$/],
+  ["GET", /^\/locations$/],
 ];
 
 /**
@@ -55,10 +64,18 @@ export function businessScopedRoutes(deps: Deps) {
       c.set("access", access);
       await next();
     })
+    .route("/locations", locationRoutes(deps))
     .route("/services", serviceRoutes(deps))
     .route("/professionals", professionalRoutes(deps))
     .route("/appointments", appointmentRoutes(deps))
     .route("/customers", customerRoutes(deps))
+    .route("/sales", saleRoutes(deps))
+    .route("/cash", cashRoutes(deps))
+    .route("/reports", reportRoutes(deps))
+    .route("/deposits", depositRoutes(deps))
+    .route("/gift-cards", giftCardRoutes(deps))
+    .route("/products", productRoutes(deps))
+    .route("/stock-movements", stockRoutes(deps))
     .route("/images", imageRoutes(deps))
     .route("/api-keys", apiKeyRoutes(deps))
     .route("/automations", automationRoutes(deps))

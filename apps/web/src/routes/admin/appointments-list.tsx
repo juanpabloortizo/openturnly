@@ -43,10 +43,15 @@ export function bookedVia(
 export function AppointmentsList({
   period,
   resourceFilter,
+  locationFilter,
+  showLocation,
   onOpen,
 }: {
   period: Period;
   resourceFilter: string;
+  locationFilter: string;
+  /** The business has several locations: say where each appointment is. */
+  showLocation: boolean;
   onOpen: (appointment: Appointment) => void;
 }) {
   const { t, i18n } = useTranslation();
@@ -70,6 +75,7 @@ export function AppointmentsList({
     const needle = searchable(query.trim());
     return (appointments.data ?? []).filter((appointment) => {
       if (resourceFilter && appointment.resourceId !== resourceFilter) return false;
+      if (locationFilter && appointment.locationId !== locationFilter) return false;
       if (status !== "all" && appointment.status !== status) return false;
       if (!needle) return true;
       const { customer } = appointment;
@@ -77,7 +83,7 @@ export function AppointmentsList({
         `${customer.firstName} ${customer.lastName} ${customer.phone ?? ""} ${customer.email ?? ""} ${appointment.code} ${appointment.serviceName} ${appointment.resourceName ?? ""}`,
       ).includes(needle);
     });
-  }, [appointments.data, resourceFilter, status, query]);
+  }, [appointments.data, resourceFilter, locationFilter, status, query]);
 
   const confirmed = rows.filter((appointment) => appointment.status === "confirmed");
   const total = confirmed.reduce((sum, appointment) => sum + (appointment.priceAmount ?? 0), 0);
@@ -134,7 +140,9 @@ export function AppointmentsList({
         <div className="min-w-0">
           <div className="truncate text-zinc-900">{appointment.serviceName}</div>
           <div className="truncate text-[13px] text-zinc-500">
-            {appointment.resourceName ?? "—"}
+            {[appointment.resourceName, showLocation ? appointment.locationName : null]
+              .filter(Boolean)
+              .join(" · ") || "—"}
           </div>
         </div>
       ),
@@ -192,6 +200,7 @@ export function AppointmentsList({
       t("agenda.exportStart"),
       t("agenda.exportEnd"),
       t("agenda.exportDuration"),
+      ...(showLocation ? [t("booking.location")] : []),
       t("booking.service"),
       t("booking.professional"),
       `${t("booking.price")} (${business.currency})`,
@@ -217,6 +226,7 @@ export function AppointmentsList({
         start.time,
         end.time,
         Math.round((Date.parse(appointment.endsAt) - Date.parse(appointment.startsAt)) / 60_000),
+        ...(showLocation ? [appointment.locationName] : []),
         appointment.serviceName,
         appointment.resourceName,
         appointment.priceAmount === null
@@ -312,7 +322,7 @@ export function AppointmentsList({
   );
 }
 
-function ExportMenu({
+export function ExportMenu({
   disabled,
   onExcel,
   onCsv,

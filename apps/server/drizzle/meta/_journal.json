@@ -106,6 +106,48 @@
       "when": 1792644512537,
       "tag": "0014_user_tours",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1793312727666,
+      "tag": "0015_locations",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793314040344,
+      "tag": "0016_sales",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793314835068,
+      "tag": "0017_gift_cards",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793315397026,
+      "tag": "0018_inventory",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793315859659,
+      "tag": "0019_cash",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793316191220,
+      "tag": "0020_commissions",
+      "breakpoints": true
     }
   ]
 }

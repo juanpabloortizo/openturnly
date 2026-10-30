@@ -2,6 +2,7 @@ import { formatPrice, fromMinorUnits, serviceSchema, toMinorUnits } from "@opent
 import { Pencil, Plus, Scissors } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Checklist } from "../../components/checklist.tsx";
 import { useConfirm } from "../../components/confirm.tsx";
 import { EmptyState, Modal, PageHeader, Switch } from "../../components/controls.tsx";
 import { type Column, DataTable } from "../../components/data-table.tsx";
@@ -17,7 +18,7 @@ import {
   Textarea,
 } from "../../components/ui.tsx";
 import type { Service } from "../../lib/api.ts";
-import { useServiceMutations, useServices } from "../../lib/catalog.ts";
+import { useLocations, useServiceMutations, useServices } from "../../lib/catalog.ts";
 import { currencySymbol, formatDuration } from "../../lib/format.ts";
 import { errorMessage, type FieldErrors, fieldMessage, validate } from "../../lib/forms.ts";
 import { useBusinessContext } from "./business.tsx";
@@ -138,8 +139,13 @@ function ServiceForm({ service, onClose }: { service: Service | null; onClose: (
   const { t, i18n } = useTranslation();
   const { business } = useBusinessContext();
   const { save, remove } = useServiceMutations(business.id);
+  const locations = useLocations(business.id).data ?? [];
   const confirm = useConfirm();
   const [name, setName] = useState(service?.name ?? "");
+  // New services are offered everywhere to begin with.
+  const [locationIds, setLocationIds] = useState<string[]>(
+    service?.locationIds ?? locations.map((location) => location.id),
+  );
   const [description, setDescription] = useState(service?.description ?? "");
   const [durationMin, setDurationMin] = useState(service?.durationMin ?? 30);
   const [price, setPrice] = useState(
@@ -163,6 +169,7 @@ function ServiceForm({ service, onClose }: { service: Service | null; onClose: (
           ? undefined
           : toMinorUnits(amount, business.currency),
       active,
+      ...(locations.length > 1 ? { locationIds } : {}),
     };
     const result = validate(serviceSchema, values);
     setErrors(result.errors ?? {});
@@ -289,6 +296,19 @@ function ServiceForm({ service, onClose }: { service: Service | null; onClose: (
             />
           )}
         </Field>
+        {locations.length > 1 && (
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium text-zinc-800">
+              {t("services.locationsLabel")}
+            </legend>
+            <Checklist
+              label={t("services.locationsLabel")}
+              value={locationIds}
+              onChange={setLocationIds}
+              items={locations.map((location) => ({ id: location.id, label: location.name }))}
+            />
+          </fieldset>
+        )}
         <div className="border-t border-zinc-100 pt-4">
           <Switch
             checked={active}
