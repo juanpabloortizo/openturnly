@@ -28,6 +28,10 @@ Security fixes go into the latest release of the current major version (for exam
 - **Sessions**: the session cookie is `HttpOnly`, `SameSite=Lax`, and `Secure` when
   `APP_URL` uses `https`. Changes made with it are refused unless they come from the
   install's own pages (`APP_URL`), so other sites can't act for someone signed in.
+- **Framing**: pages refuse to be shown inside other websites (`X-Frame-Options`), so nobody
+  can trick a signed-in user into clicking through someone else's page. The one exception
+  is a business's booking page opened with `?embed`, made to sit in the business's own
+  website ([docs/embed.md](docs/embed.md)); it shows no admin and needs no sign-in.
 - **Access**: every business route checks that the person belongs to that business and what
   their role allows; records are always looked up within the business.
 - **AI agent keys** are stored hashed and shown once. **Webhooks** are signed, go out only

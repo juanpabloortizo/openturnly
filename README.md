@@ -66,7 +66,9 @@ cd openturnly
 docker compose up -d --build
 ```
 
-Open <http://localhost:3000> and create the owner account. Bookings are stored in
+Open <http://localhost:3000> and create the owner account. To look around before setting up
+your own business, click **Try a sample**: it creates a barbershop with services, staff,
+customers and a week of appointments, which you can delete in one click. Bookings are stored in
 PostgreSQL, in the `postgres-data` Docker volume. Set `POSTGRES_PASSWORD` in a `.env` file
 before the first start (see [`.env.example`](.env.example)).
 
@@ -95,7 +97,8 @@ updates, read the [self-hosting guide](docs/self-hosting.md), or follow the
 - **Booking page** per business with its logo, cover, brand colour and own questions, in
   Spanish or English: services grouped by category with a search, professionals with their
   photo, and a QR code with the logo to print. Customers book without an account and get a
-  booking code.
+  booking code. It can also live inside your own website, or open from a floating button
+  ([docs/embed.md](docs/embed.md)).
 - **Calendar** with day, week, month and list views, booking and moving appointments,
   no-shows, and Excel/CSV export.
 - **Sales and checkout**: charge appointments or sell at the counter, with discounts, tips
@@ -131,7 +134,6 @@ Next on the list:
 
 - Confirmation and reminder emails with `.ics`, and cancel or reschedule links without an
   account.
-- An embeddable booking widget for existing websites.
 
 Not planned: online payments, built-in WhatsApp/SMS, marketing tools. Workflows and the
 MCP server let you connect those from other tools.

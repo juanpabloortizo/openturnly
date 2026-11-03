@@ -1,0 +1,1 @@
+ALTER TABLE "businesses" ADD COLUMN "sample" boolean DEFAULT false NOT NULL;

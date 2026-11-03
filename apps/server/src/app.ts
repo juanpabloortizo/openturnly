@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { serveStatic } from "@hono/node-server/serve-static";
+import { checkSlug } from "@openturnly/core";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { logger } from "hono/logger";
@@ -25,6 +26,19 @@ export function createApp({ db, auth, config }: Pick<Deps, "db" | "auth" | "conf
   const app = new Hono<AppEnv>();
 
   if (!config.isProduction && process.env.NODE_ENV !== "test") app.use(logger());
+  // Runs after secureHeaders on the way out. A booking page (/<slug>) opened with ?embed can
+  // be shown inside any website, by embed.js or a plain iframe; every other page, the admin
+  // above all, stays unframeable. embed.js is loaded by those websites, from any origin.
+  app.use(async (c, next) => {
+    await next();
+    if (c.req.path === "/embed.js") {
+      c.res.headers.set("Cross-Origin-Resource-Policy", "cross-origin");
+      c.res.headers.set("Cache-Control", "public, max-age=3600");
+    } else if (c.req.query("embed") !== undefined && isBookingPagePath(c.req.path)) {
+      c.res.headers.delete("X-Frame-Options");
+      c.res.headers.set("Content-Security-Policy", "frame-ancestors *");
+    }
+  });
   app.use(secureHeaders());
 
   app.onError((err, c) => {
@@ -82,6 +96,12 @@ export function createApp({ db, auth, config }: Pick<Deps, "db" | "auth" | "conf
   serveWebApp(app, config.webDistDir);
   // The server starts the automations loop; tests drive it step by step.
   return Object.assign(app, { automations });
+}
+
+/** "/studio-central": a business's booking page, never an app page like /admin or /login. */
+function isBookingPagePath(pathname: string) {
+  const match = /^\/([^/]+)\/?$/.exec(pathname);
+  return match?.[1] !== undefined && checkSlug(match[1]) === null;
 }
 
 /** Serves the built React app. Any unknown path gets index.html so client routing works. */

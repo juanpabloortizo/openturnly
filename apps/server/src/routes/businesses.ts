@@ -6,6 +6,7 @@ import {
   memberCreateSchema,
   memberUpdateSchema,
   passwordResetSchema,
+  sampleBusinessSchema,
 } from "@openturnly/core";
 import { and, asc, eq, gt, isNull, ne } from "drizzle-orm";
 import { Hono } from "hono";
@@ -16,14 +17,12 @@ import {
   businessMembers,
   holidayOverrides,
   invitations,
-  locations,
   resources,
   users,
-  weeklyHours,
 } from "../db/schema.ts";
 import { type BusinessAccess, findBusinessWithAccess, findManagedBusiness } from "../lib/access.ts";
 import { createAccount, resetPassword } from "../lib/accounts.ts";
-import { newBusinessShortId } from "../lib/codes.ts";
+import { insertBusiness } from "../lib/businesses.ts";
 import { businessCountry } from "../lib/holidays.ts";
 import {
   type AppEnv,
@@ -34,7 +33,7 @@ import {
   requireUser,
 } from "../lib/http.ts";
 import { logoUrls } from "../lib/images.ts";
-import { DEFAULT_HOURS } from "../lib/locations.ts";
+import { createSampleBusiness } from "../lib/sample-business.ts";
 import { createToken, hashToken } from "../lib/tokens.ts";
 
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -94,27 +93,18 @@ export function businessRoutes({ db, config, auth, guard }: Deps) {
         requireOwner(c);
         const input: BusinessCreateInput = await parseBody(c, businessCreateSchema);
         await assertSlugAvailable(db, input.slug);
-        const business = await db.transaction(async (tx) => {
-          const [created] = await tx
-            .insert(businesses)
-            .values({ ...input, shortId: await newBusinessShortId(tx) })
-            .returning();
-          if (!created) throw apiError(500, "internal_error");
-          // Every business works from at least one location, named after it to begin with.
-          const [location] = await tx
-            .insert(locations)
-            .values({ businessId: created.id, name: created.name })
-            .returning();
-          if (!location) throw apiError(500, "internal_error");
-          await tx.insert(weeklyHours).values(
-            DEFAULT_HOURS.map((range) => ({
-              ...range,
-              businessId: created.id,
-              locationId: location.id,
-            })),
-          );
-          return created;
-        });
+        const { business } = await db.transaction((tx) => insertBusiness(tx, input));
+        return c.json(
+          { business: adminView(business, null, { role: "owner", resourceId: null }) },
+          201,
+        );
+      })
+
+      /** A business full of made-up data to try OpenTurnly with, deleted like any other. */
+      .post("/sample", async (c) => {
+        requireOwner(c);
+        const input = await parseBody(c, sampleBusinessSchema);
+        const business = await db.transaction((tx) => createSampleBusiness(tx, input));
         return c.json(
           { business: adminView(business, null, { role: "owner", resourceId: null }) },
           201,

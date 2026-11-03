@@ -6,6 +6,37 @@ All notable changes to OpenTurnly are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-03
+
+Easier to try and easier to sell from: a new install can fill a sample business in one
+click, and the booking page can live inside the business's own website. Existing installs
+update by pulling the new image; migration 0029 runs on start and changes nothing for
+existing businesses.
+
+### Added
+
+- **Sample business**: on a new install, "Try a sample" (or "Create sample business" on the
+  New business page) creates a barbershop with services in categories, three professionals,
+  three customers and a week of appointments, in the owner's language and with prices that
+  fit their currency. A banner marks it as sample data on every page, with a button to
+  delete it in one step.
+- **Booking page on your own website**: Settings → Booking page → Share your page → "Add to
+  your website" gives the code to show the booking page as a section of any site (it grows
+  with each step, with no inner scrollbar, and leaves out the logo and cover the site
+  already has), or a floating button in the corner that opens it on top, with your text
+  and colour (full screen on phones). A plain iframe is offered for site builders that
+  don't take scripts. Only booking pages opened with `?embed` can be shown inside other
+  websites; the admin and sign-in pages still refuse to be framed. See
+  [docs/embed.md](docs/embed.md).
+
+### Changed
+
+- **Account menu**: shorter. It no longer repeats the name and email its button already
+  shows (it still does with the sidebar collapsed) nor the role; "See the tour again" is a
+  compass icon next to "My account", with a tooltip; the version sits small next to "Sign
+  out".
+- New README screenshots of 1.3.0, taken from the sample business.
+
 ## [1.2.0] - 2026-11-02
 
 A business can now run its front desk in OpenTurnly: several locations, charging and sales,
@@ -186,7 +217,8 @@ The first public release, under the MIT license.
   own pages, and "My account" waits 15 minutes after 5 wrong current passwords. See
   [SECURITY.md](SECURITY.md) for everything that's built in.
 
-[Unreleased]: https://github.com/juanpabloortizo/openturnly/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/juanpabloortizo/openturnly/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/juanpabloortizo/openturnly/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/juanpabloortizo/openturnly/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/juanpabloortizo/openturnly/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/juanpabloortizo/openturnly/releases/tag/v1.0.0

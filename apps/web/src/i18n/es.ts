@@ -408,6 +408,7 @@ export const es = {
     emptyTitle: "Todavía no hay negocios",
     emptyOwner: "Crea el primero. Después podrás invitar a su dueño.",
     emptyMember: "Aún no tienes acceso a ningún negocio. Pídeselo al administrador.",
+    trySample: "Probar con un ejemplo",
   },
   newBusiness: {
     title: "Nuevo negocio",
@@ -417,6 +418,21 @@ export const es = {
     regionTitle: "Región",
     regionHint: "Define la hora de las citas, los festivos y cómo se muestran los precios.",
     submit: "Crear negocio",
+  },
+  sample: {
+    offerTitle: "¿Quieres verlo funcionando primero?",
+    offerBody:
+      "Crea un negocio de ejemplo con servicios, 3 profesionales, 3 clientes y citas esta semana. Lo borras cuando quieras.",
+    create: "Crear negocio de ejemplo",
+    bannerTitle: "Este es un negocio de ejemplo.",
+    bannerBody:
+      "Los servicios, el equipo, los clientes y las citas son de prueba. Explora con confianza.",
+    createOwn: "Crear mi negocio",
+    remove: "Borrar ejemplo",
+    removeTitle: "¿Borrar el negocio de ejemplo?",
+    removeBody:
+      "Se borran sus servicios, equipo, clientes y citas de prueba. Tus otros negocios no cambian.",
+    removed: "Negocio de ejemplo borrado.",
   },
   checklist: {
     search: "Buscar…",
@@ -622,6 +638,21 @@ export const es = {
     brandHint: "Tu logo, tu portada y tus colores: así se ve tu página de reservas.",
     pageTitle: "Página de reservas",
     pageHint: "Comparte este enlace en Instagram, WhatsApp o tu sitio web para recibir reservas.",
+    embedTitle: "Insertar en tu web",
+    embedHint: "La reserva dentro de tu sitio, o un botón que la abre encima.",
+    embedValue: "Código",
+    embedInline: "En la página",
+    embedInlineHint: "Aparece donde pegues el código y crece con su contenido.",
+    embedButton: "Botón flotante",
+    embedButtonHint: "Un botón en la esquina que abre la reserva sobre tu web.",
+    embedLabel: "Texto del botón",
+    embedLabelDefault: "Reservar",
+    embedCode: "Pega este código en tu web",
+    embedWhere:
+      "En WordPress va en un bloque «HTML personalizado»; en Wix, Squarespace o Shopify, en «Insertar código».",
+    embedIframe: "¿Tu web no acepta scripts? Usa un iframe",
+    embedIframeHint: "Tiene una altura fija: súbela si ves una barra de desplazamiento.",
+    embedPreview: "Ver cómo se ve",
     qrTitle: "Código QR",
     qrFeatures: {
       logo: "Tu logo en el centro",

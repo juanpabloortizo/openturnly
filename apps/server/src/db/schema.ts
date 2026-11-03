@@ -177,6 +177,8 @@ export const businesses = pgTable("businesses", {
   pageTheme: text("page_theme", { enum: PAGE_THEMES }).notNull().default("soft"),
   /** Which customer details the booking page asks for, plus the business's own questions. */
   bookingForm: jsonb("booking_form").$type<BookingForm>().notNull().default(DEFAULT_BOOKING_FORM),
+  /** Filled with made-up services, team, customers and appointments to try OpenTurnly. */
+  sample: boolean("sample").notNull().default(false),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });

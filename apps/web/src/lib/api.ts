@@ -91,6 +91,8 @@ export type Business = {
   brandColor: string | null;
   pageTheme: PageTheme;
   bookingForm: BookingForm;
+  /** Made-up data to try OpenTurnly with (see "Try a sample"). */
+  sample: boolean;
   access: BusinessAccess;
   createdAt: string;
 };

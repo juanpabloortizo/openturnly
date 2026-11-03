@@ -426,7 +426,136 @@ function ShareCard({ business, brandColor }: { business: Business; brandColor: s
         locale={business.locale}
         fileName={`qr-${business.slug}`}
       />
+      <SettingRow
+        label={t("settings.embedTitle")}
+        hint={t("settings.embedHint")}
+        value={t("settings.embedValue")}
+      >
+        <EmbedCode business={business} brandColor={brandColor} />
+      </SettingRow>
     </SettingsCard>
+  );
+}
+
+const htmlAttribute = (text: string) =>
+  text.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
+
+/** The code to paste in the business's own website: the booking page in it, or a button. */
+function EmbedCode({ business, brandColor }: { business: Business; brandColor: string }) {
+  const { t } = useTranslation();
+  const [mode, setMode] = useState<"inline" | "button">("inline");
+  const [label, setLabel] = useState(() =>
+    t("settings.embedLabelDefault", { lng: business.locale }),
+  );
+  const [iframe, setIframe] = useState(false);
+  const origin = window.location.origin;
+  const script = `<script src="${origin}/embed.js" async></script>`;
+  const code =
+    mode === "inline"
+      ? `<div data-openturnly="${business.slug}"></div>\n${script}`
+      : `<div data-openturnly="${business.slug}" data-mode="button" data-label="${htmlAttribute(label.trim() || t("settings.embedLabelDefault", { lng: business.locale }))}" data-color="${brandColor}"></div>\n${script}`;
+  const plain = `<iframe src="${origin}/${business.slug}?embed=1" title="${htmlAttribute(business.name)}" style="width:100%;height:760px;border:0" loading="lazy"></iframe>`;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-2 sm:grid-cols-2">
+        {(["inline", "button"] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={mode === option}
+            onClick={() => setMode(option)}
+            className={cn(
+              "rounded-lg border px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40",
+              mode === option
+                ? "border-brand-500 bg-brand-50/60 ring-1 ring-brand-500"
+                : "border-zinc-200 hover:border-zinc-300",
+            )}
+          >
+            <span className="block text-sm font-medium text-zinc-800">
+              {t(option === "inline" ? "settings.embedInline" : "settings.embedButton")}
+            </span>
+            <span className="mt-0.5 block text-[13px] text-zinc-500">
+              {t(option === "inline" ? "settings.embedInlineHint" : "settings.embedButtonHint")}
+            </span>
+          </button>
+        ))}
+      </div>
+      {mode === "button" && (
+        <Field label={t("settings.embedLabel")}>
+          {(props) => (
+            <Input
+              {...props}
+              value={label}
+              maxLength={40}
+              onChange={(event) => setLabel(event.target.value)}
+            />
+          )}
+        </Field>
+      )}
+      <div className="space-y-1.5">
+        <p className="text-sm font-medium text-zinc-800">{t("settings.embedCode")}</p>
+        <CodeBlock code={code} />
+        <p className="text-[13px] text-zinc-500">{t("settings.embedWhere")}</p>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <button
+          type="button"
+          aria-expanded={iframe}
+          onClick={() => setIframe(!iframe)}
+          className="text-[13px] font-medium text-brand-700 hover:underline"
+        >
+          {t("settings.embedIframe")}
+        </button>
+        <a
+          href={`${origin}/${business.slug}?embed=1`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 text-[13px] font-medium text-zinc-600 hover:text-zinc-900"
+        >
+          {t("settings.embedPreview")}
+          <ArrowUpRight className="size-3.5" aria-hidden />
+        </a>
+      </div>
+      {iframe && (
+        <div className="space-y-1.5">
+          <CodeBlock code={plain} />
+          <p className="text-[13px] text-zinc-500">{t("settings.embedIframeHint")}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Code to copy as it is, with a button that copies it. */
+function CodeBlock({ code }: { code: string }) {
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+  const block = useRef<HTMLPreElement>(null);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Plain http has no clipboard: select it so it can be copied by hand.
+      const selection = window.getSelection();
+      if (block.current && selection) selection.selectAllChildren(block.current);
+    }
+  };
+  return (
+    <div className="relative">
+      <pre
+        ref={block}
+        className="overflow-x-auto rounded-lg border border-zinc-200 bg-zinc-50 py-3 pr-24 pl-3 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all text-zinc-700"
+      >
+        {code}
+      </pre>
+      <Button variant="secondary" size="sm" onClick={copy} className="absolute top-2 right-2">
+        {copied ? <Check className="size-4" aria-hidden /> : null}
+        {copied ? t("common.copied") : t("common.copy")}
+      </Button>
+    </div>
   );
 }
 

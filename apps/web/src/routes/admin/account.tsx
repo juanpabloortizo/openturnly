@@ -38,16 +38,7 @@ const THEME_ICONS: Record<Theme, LucideIcon> = { light: Sun, dark: Moon, system:
  * The signed-in person at the bottom of the sidebar. Opens a menu with their account,
  * the language, the theme and signing out.
  */
-export function AccountMenu({
-  user,
-  collapsed,
-  roleLabel,
-}: {
-  user: User;
-  collapsed: boolean;
-  /** "Administrador", "Profesional"… for the business on screen. */
-  roleLabel: string | null;
-}) {
+export function AccountMenu({ user, collapsed }: { user: User; collapsed: boolean }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -93,28 +84,47 @@ export function AccountMenu({
             collapsed ? "bottom-3 left-full ml-2 w-64" : "inset-x-3 bottom-full mb-1",
           )}
         >
-          <div className="px-2.5 pt-1.5 pb-2.5">
-            <p className="truncate text-sm font-medium text-zinc-900">{user.name}</p>
-            <p className="truncate text-xs text-zinc-500">{user.email}</p>
-            {roleLabel && (
-              <p className="mt-1.5 text-xs font-medium text-brand-700">
-                {roleLabel}
-                {version.data && (
-                  <span className="ml-1.5 font-normal text-zinc-400">v{version.data}</span>
-                )}
-              </p>
-            )}
-          </div>
-          <div className="space-y-0.5 border-t border-zinc-100 pt-1.5">
-            <MenuItem
-              icon={UserRound}
-              onClick={() => {
-                setOpen(false);
-                setEditing(true);
-              }}
-            >
-              {t("account.title")}
-            </MenuItem>
+          {/* The button below shows who it is, except when the sidebar is narrow. */}
+          {collapsed && (
+            <div className="mb-1.5 border-b border-zinc-100 px-2.5 pt-1.5 pb-2.5">
+              <p className="truncate text-sm font-medium text-zinc-900">{user.name}</p>
+              <p className="truncate text-xs text-zinc-500">{user.email}</p>
+            </div>
+          )}
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-1">
+              <div className="min-w-0 flex-1">
+                <MenuItem
+                  icon={UserRound}
+                  onClick={() => {
+                    setOpen(false);
+                    setEditing(true);
+                  }}
+                >
+                  {t("account.title")}
+                </MenuItem>
+              </div>
+              <span className="group relative">
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-label={t("tour.replay")}
+                  onClick={() => {
+                    setOpen(false);
+                    replay.mutate();
+                  }}
+                  className="grid size-8 place-items-center rounded-lg text-zinc-400 outline-none hover:bg-zinc-100 hover:text-zinc-700 focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                >
+                  <Compass className="size-4" aria-hidden />
+                </button>
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute right-0 bottom-full mb-1.5 rounded-md bg-zinc-900 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-has-focus-visible:opacity-100"
+                >
+                  {t("tour.replay")}
+                </span>
+              </span>
+            </div>
             <div className="flex items-center justify-between gap-3 px-2.5 py-1.5">
               <span className="flex items-center gap-2.5 text-[13px] text-zinc-700">
                 <Languages className="size-4 text-zinc-400" aria-hidden />
@@ -129,20 +139,17 @@ export function AccountMenu({
               </span>
               <ThemeSwitcher />
             </div>
-            <MenuItem
-              icon={Compass}
-              onClick={() => {
-                setOpen(false);
-                replay.mutate();
-              }}
-            >
-              {t("tour.replay")}
-            </MenuItem>
           </div>
-          <div className="mt-1.5 border-t border-zinc-100 pt-1.5">
-            <MenuItem icon={LogOut} onClick={() => logout.mutate()} disabled={logout.isPending}>
-              {t("nav.logout")}
-            </MenuItem>
+          <div className="mt-1.5 flex items-center border-t border-zinc-100 pt-1.5">
+            <div className="min-w-0 flex-1">
+              <MenuItem icon={LogOut} onClick={() => logout.mutate()} disabled={logout.isPending}>
+                {t("nav.logout")}
+              </MenuItem>
+            </div>
+            {/* Which OpenTurnly this server runs, for whoever keeps it up to date. */}
+            {version.data && (
+              <span className="shrink-0 px-2.5 text-[11px] text-zinc-400">v{version.data}</span>
+            )}
           </div>
         </div>
       )}

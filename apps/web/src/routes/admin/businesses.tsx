@@ -1,20 +1,22 @@
-import { ArrowUpRight, ChevronRight, Plus, Store } from "lucide-react";
+import { ArrowUpRight, ChevronRight, FlaskConical, Plus, Store } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link, Navigate, useNavigate } from "react-router";
 import { EmptyState, PageHeader } from "../../components/controls.tsx";
 import { type Column, DataTable, IdentityCell } from "../../components/data-table.tsx";
-import { Alert, buttonClass, Spinner } from "../../components/ui.tsx";
+import { Alert, Button, buttonClass, Spinner } from "../../components/ui.tsx";
 import type { Business } from "../../lib/api.ts";
 import { businessPath, useBusinesses } from "../../lib/businesses.ts";
 import { errorMessage } from "../../lib/forms.ts";
 import { publicHost } from "../../lib/locale.ts";
 import { useAdminUser } from "./layout.tsx";
+import { useStartSample } from "./sample-business.tsx";
 
 export function BusinessesPage() {
   const { t } = useTranslation();
   const user = useAdminUser();
   const navigate = useNavigate();
   const businesses = useBusinesses();
+  const sample = useStartSample();
   const isOwner = user.role === "owner";
 
   if (businesses.isPending) return <Spinner />;
@@ -93,7 +95,17 @@ export function BusinessesPage() {
           icon={<Store className="size-5" aria-hidden />}
           title={t("businesses.emptyTitle")}
           body={isOwner ? t("businesses.emptyOwner") : t("businesses.emptyMember")}
-          action={newButton}
+          action={
+            isOwner && (
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button variant="secondary" onClick={sample.start} loading={sample.pending}>
+                  <FlaskConical className="size-4" aria-hidden />
+                  {t("businesses.trySample")}
+                </Button>
+                {newButton}
+              </div>
+            )
+          }
         />
       ) : (
         <DataTable

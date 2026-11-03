@@ -6,6 +6,7 @@ import type {
   BusinessUpdateInput,
   MemberCreateInput,
   MemberUpdateInput,
+  SampleBusinessInput,
 } from "@openturnly/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -52,6 +53,21 @@ export function useCreateBusiness() {
     mutationFn: async (input: BusinessCreateInput) =>
       (await api<{ business: Business }>("/api/businesses", { method: "POST", body: input }))
         .business,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.all }),
+  });
+}
+
+/** A business full of made-up data, in the owner's region and language. */
+export function useCreateSampleBusiness() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: SampleBusinessInput) =>
+      (
+        await api<{ business: Business }>("/api/businesses/sample", {
+          method: "POST",
+          body: input,
+        })
+      ).business,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.all }),
   });
 }

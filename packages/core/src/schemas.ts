@@ -239,6 +239,14 @@ export const businessCreateSchema = z.object({
 });
 export type BusinessCreateInput = z.infer<typeof businessCreateSchema>;
 
+/** A sample business takes its region and language from whoever asks; the rest is made up. */
+export const sampleBusinessSchema = businessCreateSchema.pick({
+  timezone: true,
+  currency: true,
+  locale: true,
+});
+export type SampleBusinessInput = z.infer<typeof sampleBusinessSchema>;
+
 /** "#0F766E" → "#0f766e". Only 6-digit hex, so colours can be mixed and compared. */
 const hexColor = z
   .string()

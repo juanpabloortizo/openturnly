@@ -41,6 +41,7 @@ export async function createTestApp(
     bookingGuard?: Partial<BookingGuardSettings>;
     trustProxy?: boolean;
     allowPrivateWebhooks?: boolean;
+    webDistDir?: string;
   } = {},
 ) {
   const config: Config = {
@@ -50,7 +51,7 @@ export async function createTestApp(
     dataDir: "",
     databaseUrl: undefined,
     secret: "test-secret-that-is-long-enough-for-better-auth",
-    webDistDir: "/nonexistent",
+    webDistDir: options.webDistDir ?? "/nonexistent",
     trustedOrigins: [APP_URL],
     trustProxy: options.trustProxy ?? false,
     bookingGuard: { ...TEST_GUARD_SETTINGS, ...options.bookingGuard },

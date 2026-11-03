@@ -6,7 +6,7 @@ import { Combobox } from "../../components/combobox.tsx";
 import { PageHeader, SettingsCard } from "../../components/controls.tsx";
 import { SlugInput } from "../../components/slug-input.tsx";
 import { Alert, Button, buttonClass, Field, Input, Select } from "../../components/ui.tsx";
-import { businessPath, useCreateBusiness } from "../../lib/businesses.ts";
+import { businessPath, useBusinesses, useCreateBusiness } from "../../lib/businesses.ts";
 import {
   apiFieldErrors,
   errorMessage,
@@ -21,11 +21,13 @@ import {
   useTimeZoneOptions,
 } from "../../lib/locale.ts";
 import { useAdminUser } from "./layout.tsx";
+import { SampleOffer } from "./sample-business.tsx";
 
 export function NewBusinessPage() {
   const { t, i18n } = useTranslation();
   const user = useAdminUser();
   const navigate = useNavigate();
+  const businesses = useBusinesses();
   const create = useCreateBusiness();
   const language = i18n.resolvedLanguage ?? "es";
   const zones = useTimeZoneOptions(language);
@@ -63,6 +65,11 @@ export function NewBusinessPage() {
   return (
     <>
       <PageHeader title={t("newBusiness.title")} subtitle={t("newBusiness.subtitle")} />
+      {businesses.data && !businesses.data.some((business) => business.sample) && (
+        <div className="mb-6">
+          <SampleOffer />
+        </div>
+      )}
       <form onSubmit={submit} noValidate className="max-w-3xl space-y-6">
         <SettingsCard title={t("newBusiness.infoTitle")} description={t("newBusiness.infoHint")}>
           {create.isError && !hasFieldErrors && <Alert>{errorMessage(t, create.error)}</Alert>}

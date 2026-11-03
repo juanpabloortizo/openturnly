@@ -48,20 +48,53 @@ import { useBookingProof } from "../lib/proof.ts";
 type Step = "location" | "service" | "datetime" | "details" | "confirm";
 type T = TFunction;
 
+/**
+ * Inside another website (/<slug>?embed, see public/embed.js): the page has no background
+ * of its own and tells the website how tall it is, so it fits without an inner scrollbar.
+ */
+function useEmbedded(embedded: boolean) {
+  const frame = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = frame.current;
+    if (!embedded || !element || window.parent === window) return;
+    document.documentElement.classList.add("embedded");
+    const report = () =>
+      window.parent.postMessage(
+        { type: "openturnly:height", height: element.getBoundingClientRect().height },
+        "*",
+      );
+    const observer = new ResizeObserver(report);
+    observer.observe(element);
+    // Escape pressed in here never reaches the website: it closes the popup through this.
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") window.parent.postMessage({ type: "openturnly:close" }, "*");
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [embedded]);
+  return frame;
+}
+
 /** The page a business shares with its customers: /<slug>. */
 export function PublicBookingPage() {
   const { slug = "" } = useParams();
+  const [searchParams] = useSearchParams();
+  const embedded = searchParams.has("embed");
   const catalog = usePublicCatalog(slug);
   const { i18n } = useTranslation();
   // Shown in the business's language, without changing the visitor's saved preference.
   const locale = catalog.data?.business.locale ?? i18n.resolvedLanguage ?? "es";
   const t = i18n.getFixedT(locale);
+  const frame = useEmbedded(embedded && catalog.isSuccess);
 
   useEffect(() => {
     if (catalog.data) document.title = catalog.data.business.name;
   }, [catalog.data]);
 
-  if (catalog.isPending) return <Spinner className="min-h-screen" />;
+  if (catalog.isPending) return <Spinner className={embedded ? "py-24" : "min-h-screen"} />;
   if (catalog.isError) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 text-center">
@@ -71,6 +104,22 @@ export function PublicBookingPage() {
     );
   }
   const { business } = catalog.data;
+  if (embedded) {
+    // The website around it already shows who the business is: just the booking steps.
+    return (
+      <div ref={frame} className="p-px" style={brandStyle(business.brandColor)}>
+        <main
+          className={cn(
+            "mx-auto max-w-3xl overflow-clip bg-white",
+            // A popup is already a white panel; on the page it's a card.
+            searchParams.get("embed") !== "popup" && "rounded-2xl ring-1 ring-zinc-950/10",
+          )}
+        >
+          <BookingWizard slug={slug} catalog={catalog.data} t={t} locale={locale} />
+        </main>
+      </div>
+    );
+  }
   return (
     <div
       className="relative isolate min-h-screen px-3 py-4 sm:px-6 sm:py-14"
@@ -274,6 +323,10 @@ function BookingWizard({
     arrivedAt.current = Date.now();
     setStepIndex(Math.max(0, Math.min(index, steps.length - 1)));
     window.scrollTo({ top: 0, behavior: "smooth" });
+    // Inside another website, that website scrolls back to the top of the booking page.
+    if (searchParams.has("embed") && window.parent !== window) {
+      window.parent.postMessage({ type: "openturnly:step" }, "*");
+    }
   };
   const next = () => goTo(stepIndex + 1);
   const back = () => goTo(stepIndex - 1);

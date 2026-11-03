@@ -255,17 +255,7 @@ function SidebarContent({ user, collapsed }: { user: User; collapsed: boolean })
         })}
       </nav>
 
-      <AccountMenu
-        user={user}
-        collapsed={collapsed}
-        roleLabel={
-          user.role === "owner"
-            ? t("nav.owner")
-            : role === "admin" || role === "professional"
-              ? t(`access.roles.${role}`)
-              : null
-        }
-      />
+      <AccountMenu user={user} collapsed={collapsed} />
     </div>
   );
 }

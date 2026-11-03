@@ -6,6 +6,7 @@ the background jobs, backed by PostgreSQL. The goal is an install that is a sing
 
 ```
  Customer ──► https://example.com/<slug>      public booking page
+ Website  ──► https://example.com/embed.js    the same page inside it (/<slug>?embed)
  Business ──► https://example.com/admin       admin panel
                        │
  ┌─────────────────────▼────────── openturnly container ┐
@@ -66,6 +67,19 @@ No free defense stops a determined attacker completely; the aim is that filling 
 calendar is slow, costly and noticed. The owner is warned in the admin panel when a proxy
 forwards requests but `TRUST_PROXY` is off. Limits and spent proofs live in memory, which
 suits the single-process install.
+
+### The booking page inside other websites
+
+`apps/web/public/embed.js` turns `<div data-openturnly="<slug>">` elements on a business's
+own website into an iframe of `/<slug>?embed=1`, or a floating button that opens
+`/<slug>?embed=popup` over the page. In embed mode the page drops its background and header
+and posts `openturnly:height` (on every resize), `openturnly:step` and `openturnly:close`
+to the website, which sizes the frame, scrolls to its top or closes the popup; the script
+only listens to messages from the install's origin and from its own frames. Every response
+gets `X-Frame-Options: SAMEORIGIN` from Hono's secure headers, except a booking page path
+(one segment that is a valid, unreserved slug) with `?embed`, which gets
+`Content-Security-Policy: frame-ancestors *` instead (`src/app.ts`). `embed.js` is served
+with `Cross-Origin-Resource-Policy: cross-origin` so other sites can load it.
 
 
 ### Roles

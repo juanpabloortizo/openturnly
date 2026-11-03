@@ -412,6 +412,7 @@ export const en: Messages<typeof es> = {
     emptyTitle: "No businesses yet",
     emptyOwner: "Create the first one. Then you can invite its owner.",
     emptyMember: "You don't have access to any business yet. Ask the administrator.",
+    trySample: "Try a sample",
   },
   newBusiness: {
     title: "New business",
@@ -421,6 +422,20 @@ export const en: Messages<typeof es> = {
     regionTitle: "Region",
     regionHint: "Sets appointment times, public holidays and how prices are shown.",
     submit: "Create business",
+  },
+  sample: {
+    offerTitle: "Want to see it working first?",
+    offerBody:
+      "Create a sample business with services, 3 professionals, 3 customers and appointments this week. Delete it whenever you like.",
+    create: "Create sample business",
+    bannerTitle: "This is a sample business.",
+    bannerBody: "Its services, team, customers and appointments are made up. Explore freely.",
+    createOwn: "Create my business",
+    remove: "Delete sample",
+    removeTitle: "Delete the sample business?",
+    removeBody:
+      "Its made-up services, team, customers and appointments go with it. Your other businesses don't change.",
+    removed: "Sample business deleted.",
   },
   checklist: {
     search: "Search…",
@@ -626,6 +641,21 @@ export const en: Messages<typeof es> = {
     brandHint: "Your logo, cover and colours: how your booking page looks.",
     pageTitle: "Booking page",
     pageHint: "Share this link on Instagram, WhatsApp or your website to get bookings.",
+    embedTitle: "Add to your website",
+    embedHint: "Booking inside your own site, or a button that opens it on top.",
+    embedValue: "Code",
+    embedInline: "In the page",
+    embedInlineHint: "Shows where you paste the code and grows with its content.",
+    embedButton: "Floating button",
+    embedButtonHint: "A corner button that opens booking over your website.",
+    embedLabel: "Button text",
+    embedLabelDefault: "Book now",
+    embedCode: "Paste this code in your website",
+    embedWhere:
+      "In WordPress it goes in a “Custom HTML” block; in Wix, Squarespace or Shopify, in “Embed code”.",
+    embedIframe: "Your website doesn't take scripts? Use an iframe",
+    embedIframeHint: "It has a fixed height: raise it if you see a scrollbar.",
+    embedPreview: "See how it looks",
     qrTitle: "QR code",
     qrFeatures: {
       logo: "Your logo in the middle",

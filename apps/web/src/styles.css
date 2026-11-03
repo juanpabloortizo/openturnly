@@ -213,6 +213,11 @@ body {
   font-feature-settings: "cv11", "ss01";
 }
 
+/* A booking page inside another website shows that website behind it. */
+html.embedded body {
+  background-color: transparent;
+}
+
 /* FullCalendar, softened to match the app: hairline grid, no outer border, quiet labels. */
 .openturnly-calendar {
   --fc-border-color: var(--color-zinc-100);

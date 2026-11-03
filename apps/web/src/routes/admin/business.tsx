@@ -5,6 +5,7 @@ import type { Business, User } from "../../lib/api.ts";
 import { businessPath, useBusiness, useBusinesses } from "../../lib/businesses.ts";
 import { errorMessage } from "../../lib/forms.ts";
 import { useAdminUser } from "./layout.tsx";
+import { SampleBanner } from "./sample-business.tsx";
 import { BusinessTours } from "./tours.tsx";
 
 export type BusinessContext = { business: Business; user: User };
@@ -39,6 +40,9 @@ export function BusinessLayout() {
 
   return (
     <>
+      {business.data.sample && (
+        <SampleBanner business={business.data} isOwner={user.role === "owner"} />
+      )}
       <Outlet context={{ business: business.data, user } satisfies BusinessContext} />
       <BusinessTours business={business.data} user={user} />
     </>
