@@ -32,6 +32,20 @@ export function isLight(hex: string) {
   return (light + 0.05) / 0.0591 > 1.05 / (light + 0.05);
 }
 
+/** Mixes a colour with black: 0 keeps it, 1 turns it black. */
+export function shade(hex: string, amount: number) {
+  const channel = (index: number) =>
+    Math.round(Number.parseInt(hex.slice(index, index + 2), 16) * (1 - amount));
+  return `#${[1, 3, 5].map((index) => channel(index).toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** The colour, darkened just enough to stand out on white (4.5:1), like a QR code needs. */
+export function darkEnough(hex: string) {
+  let color = hex;
+  for (let step = 1; 1.05 / (luminance(color) + 0.05) < 4.5; step++) color = shade(hex, step / 10);
+  return color;
+}
+
 /**
  * CSS variables that repaint every `brand-*` utility with a business's colour, so the
  * booking page (and its preview) follow the brand without separate styles.

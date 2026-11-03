@@ -125,7 +125,7 @@ export function registerAdminTools(tool: Tool, ctx: ToolContext) {
     {
       title: "Summary of a period",
       description:
-        "Appointments, cancellations and income (confirmed appointments' prices) between two dates, by service, by professional and by how they were booked.",
+        "Appointments, cancellations, no-shows and income (confirmed appointments' prices) between two dates, by service, by professional and by how they were booked.",
       input: z.object({ date, until_date: date }),
       readOnly: true,
     },
@@ -153,7 +153,8 @@ export function registerAdminTools(tool: Tool, ctx: ToolContext) {
         from: args.date,
         until: args.until_date,
         appointments: confirmed.length,
-        cancelled: rows.length - confirmed.length,
+        cancelled: rows.filter((row) => row.status === "cancelled").length,
+        no_shows: rows.filter((row) => row.status === "no_show").length,
         customers: new Set(confirmed.map((row) => row.customer.id)).size,
         income: priceView(income, business.currency),
         by_service: group((row) => row.serviceName),

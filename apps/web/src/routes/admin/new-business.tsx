@@ -6,7 +6,7 @@ import { Combobox } from "../../components/combobox.tsx";
 import { PageHeader, SettingsCard } from "../../components/controls.tsx";
 import { SlugInput } from "../../components/slug-input.tsx";
 import { Alert, Button, buttonClass, Field, Input, Select } from "../../components/ui.tsx";
-import { useCreateBusiness } from "../../lib/businesses.ts";
+import { businessPath, useCreateBusiness } from "../../lib/businesses.ts";
 import {
   apiFieldErrors,
   errorMessage,
@@ -53,7 +53,7 @@ export function NewBusinessPage() {
     setErrors(result.errors ?? {});
     if (!result.data) return;
     create.mutate(result.data, {
-      onSuccess: (business) => navigate(`/admin/businesses/${business.id}`),
+      onSuccess: (business) => navigate(businessPath(business)),
       onError: (error) => setErrors(apiFieldErrors(error)),
     });
   };

@@ -23,6 +23,7 @@ import {
 } from "../db/schema.ts";
 import { type BusinessAccess, findBusinessWithAccess, findManagedBusiness } from "../lib/access.ts";
 import { createAccount, resetPassword } from "../lib/accounts.ts";
+import { newBusinessShortId } from "../lib/codes.ts";
 import { businessCountry } from "../lib/holidays.ts";
 import {
   type AppEnv,
@@ -94,7 +95,10 @@ export function businessRoutes({ db, config, auth, guard }: Deps) {
         const input: BusinessCreateInput = await parseBody(c, businessCreateSchema);
         await assertSlugAvailable(db, input.slug);
         const business = await db.transaction(async (tx) => {
-          const [created] = await tx.insert(businesses).values(input).returning();
+          const [created] = await tx
+            .insert(businesses)
+            .values({ ...input, shortId: await newBusinessShortId(tx) })
+            .returning();
           if (!created) throw apiError(500, "internal_error");
           // Every business works from at least one location, named after it to begin with.
           const [location] = await tx

@@ -1,5 +1,5 @@
 import type { BusinessRole } from "@openturnly/core";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import type { SessionUser } from "../auth.ts";
 import type { Db } from "../db/client.ts";
 import { type Business, businesses, businessMembers } from "../db/schema.ts";
@@ -17,6 +17,11 @@ export type BusinessAccess = {
   apiKey?: { id: string; name: string };
 };
 
+/** A business by its id or by the short id admin URLs use. */
+function byIdOrShortId(ref: string) {
+  return or(eq(businesses.id, ref), eq(businesses.shortId, ref));
+}
+
 /**
  * The business and the user's access to it. Returns 404 (not 403) when they have none,
  * so the business's existence is not leaked.
@@ -27,7 +32,7 @@ export async function findBusinessWithAccess(
   businessId: string,
 ): Promise<{ business: Business; access: BusinessAccess }> {
   if (user.role === "owner") {
-    const [business] = await db.select().from(businesses).where(eq(businesses.id, businessId));
+    const [business] = await db.select().from(businesses).where(byIdOrShortId(businessId));
     if (!business) throw apiError(404, "business_not_found");
     return { business, access: { role: "owner", resourceId: null } };
   }
@@ -39,7 +44,7 @@ export async function findBusinessWithAccess(
     })
     .from(businesses)
     .innerJoin(businessMembers, eq(businessMembers.businessId, businesses.id))
-    .where(and(eq(businesses.id, businessId), eq(businessMembers.userId, user.id)));
+    .where(and(byIdOrShortId(businessId), eq(businessMembers.userId, user.id)));
   if (!row) throw apiError(404, "business_not_found");
   return { business: row.business, access: { role: row.role, resourceId: row.resourceId } };
 }
@@ -66,10 +71,10 @@ export async function findBusinessForKey(
   businessId: string,
 ): Promise<{ business: Business; access: BusinessAccess }> {
   const key = await findApiKey(db, token);
-  if (!key || key.businessId !== businessId) throw apiError(401, "invalid_key");
+  if (!key) throw apiError(401, "invalid_key");
+  const [business] = await db.select().from(businesses).where(byIdOrShortId(businessId));
+  if (!business || business.id !== key.businessId) throw apiError(401, "invalid_key");
   if (key.kind !== "admin") throw apiError(403, "forbidden");
-  const [business] = await db.select().from(businesses).where(eq(businesses.id, businessId));
-  if (!business) throw apiError(404, "business_not_found");
   return {
     business,
     access: { role: "admin", resourceId: null, apiKey: { id: key.id, name: key.name } },

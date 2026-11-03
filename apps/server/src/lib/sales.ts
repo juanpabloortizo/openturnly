@@ -18,6 +18,7 @@ import {
   services,
   users,
 } from "../db/schema.ts";
+import { closedError } from "./appointment-changes.ts";
 import { usableGiftCard } from "./gift-cards.ts";
 import { apiError } from "./http.ts";
 import { lockStock, moveStock } from "./inventory.ts";
@@ -72,9 +73,8 @@ export async function createSale(
             )
         : [];
     if (charged.length !== appointmentIds.length) throw apiError(404, "appointment_not_found");
-    if (charged.some((appointment) => appointment.status !== "confirmed")) {
-      throw apiError(409, "appointment_cancelled");
-    }
+    const closed = charged.find((appointment) => appointment.status !== "confirmed");
+    if (closed) throw closedError(closed);
     if ((await chargedAppointments(tx, appointmentIds)).size > 0) {
       throw apiError(409, "appointment_paid");
     }
@@ -105,12 +105,18 @@ export async function createSale(
     const goods =
       productIds.length > 0
         ? await tx
-            .select({ id: products.id, name: products.name })
+            .select({
+              id: products.id,
+              name: products.name,
+              commissionValue: products.commissionValue,
+              commissionType: products.commissionType,
+              taxRate: products.taxRate,
+            })
             .from(products)
             .where(and(eq(products.businessId, business.id), inArray(products.id, productIds)))
         : [];
-    const productNames = new Map(goods.map((product) => [product.id, product.name]));
-    if (productNames.size !== productIds.length) throw apiError(404, "product_not_found");
+    const goodsById = new Map(goods.map((product) => [product.id, product]));
+    if (goodsById.size !== productIds.length) throw apiError(404, "product_not_found");
 
     const serviceIds = [
       ...new Set(
@@ -148,8 +154,9 @@ export async function createSale(
     const lines = input.items.map((item, position) => {
       const appointment = charged.find((row) => row.id === item.appointmentId);
       const isProduct = item.kind === "product";
+      const good = isProduct ? goodsById.get(item.productId ?? "") : undefined;
       const name = isProduct
-        ? productNames.get(item.productId ?? "")
+        ? good?.name
         : (appointment?.serviceName ??
           (item.serviceId ? serviceNames.get(item.serviceId) : undefined));
       if (!name) throw apiError(404, isProduct ? "product_not_found" : "service_not_found");
@@ -171,6 +178,10 @@ export async function createSale(
         unitPrice: item.unitPrice,
         discountAmount: item.discountAmount,
         total: gross - item.discountAmount,
+        // The product's own commission and IVA as they are today, kept with the sale.
+        commissionValue: good?.commissionValue ?? null,
+        commissionType: good && good.commissionValue !== null ? good.commissionType : null,
+        taxRate: good?.taxRate ?? null,
         position,
       };
     });

@@ -1,16 +1,34 @@
-import { customerAdminSchema, formatPhone, formatPrice, instantToZoned } from "@openturnly/core";
-import { CalendarDays, Contact, Merge, Plus } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import {
+  customerAdminSchema,
+  formatPhone,
+  formatPrice,
+  GENDERS,
+  type Gender,
+  instantToZoned,
+} from "@openturnly/core";
+import { CalendarDays, ChevronDown, Contact, Merge } from "lucide-react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router";
+import { BirthDateField } from "../../components/birth-date-field.tsx";
 import { Combobox, searchable } from "../../components/combobox.tsx";
 import { useConfirm } from "../../components/confirm.tsx";
 import { EmptyState, Modal, PageHeader } from "../../components/controls.tsx";
 import { type Column, DataTable } from "../../components/data-table.tsx";
 import { PhoneInput } from "../../components/phone-input.tsx";
 import { toast } from "../../components/toast.tsx";
-import { Alert, Badge, Button, Field, Input, Spinner, Textarea } from "../../components/ui.tsx";
+import {
+  Alert,
+  Badge,
+  Button,
+  Field,
+  Input,
+  Select,
+  Spinner,
+  Textarea,
+} from "../../components/ui.tsx";
 import type { Customer, CustomerAppointment, CustomerSummary } from "../../lib/api.ts";
+import { cn } from "../../lib/cn.ts";
 import { useCustomer, useCustomerMutations, useCustomers } from "../../lib/customers.ts";
 import {
   apiFieldErrors,
@@ -20,6 +38,7 @@ import {
   validate,
 } from "../../lib/forms.ts";
 import { useBusinessContext } from "./business.tsx";
+import { CustomersActions } from "./customer-import.tsx";
 
 function initials(customer: { firstName: string; lastName: string }) {
   return `${customer.firstName.charAt(0)}${customer.lastName.charAt(0)}`.toUpperCase();
@@ -46,28 +65,40 @@ export function CustomersPage() {
   const { business } = useBusinessContext();
   const customers = useCustomers(business.id);
   const formatInstant = useFormatInstant();
-  // ?customer=<id> opens a customer, so the agenda can link straight to one.
+  // ?customer=<short id> opens a customer, so the agenda can link straight to one.
   const [params, setParams] = useSearchParams();
-  const openId = params.get("customer");
+  const ref = params.get("customer");
+  // Links from before short ids carry the full id; those still find the customer.
+  const opened = ref
+    ? customers.data?.find((customer) => customer.shortId === ref || customer.id === ref)
+    : undefined;
   const [creating, setCreating] = useState(false);
 
-  const open = (id: string | null) =>
-    setParams(
-      (current) => {
-        const next = new URLSearchParams(current);
-        if (id) next.set("customer", id);
-        else next.delete("customer");
-        return next;
-      },
-      { replace: true },
-    );
-
-  const newButton = (
-    <Button data-tour="customers-new" onClick={() => setCreating(true)}>
-      <Plus className="size-4" aria-hidden />
-      {t("customers.new")}
-    </Button>
+  const open = useCallback(
+    (shortId: string | null) =>
+      setParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (shortId) next.set("customer", shortId);
+          else next.delete("customer");
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams],
   );
+
+  // A stale link (deleted customer, another business) closes with a message; an old one
+  // shows the short id from then on.
+  useEffect(() => {
+    if (!ref || !customers.data) return;
+    if (!opened) {
+      toast.error(t("errors.customer_not_found"));
+      open(null);
+    } else if (opened.shortId !== ref) {
+      open(opened.shortId);
+    }
+  }, [ref, customers.data, opened, open, t]);
 
   const columns: Column<CustomerSummary>[] = [
     {
@@ -136,7 +167,9 @@ export function CustomersPage() {
       <PageHeader
         title={t("customers.title")}
         subtitle={t("customers.subtitle")}
-        actions={newButton}
+        actions={
+          <CustomersActions onNew={() => setCreating(true)} customers={customers.data ?? []} />
+        }
       />
       <div data-tour="customers-list">
         {customers.isPending ? (
@@ -148,14 +181,16 @@ export function CustomersPage() {
             icon={<Contact className="size-5" aria-hidden />}
             title={t("customers.emptyTitle")}
             body={t("customers.emptyBody")}
-            action={newButton}
+            action={
+              <CustomersActions onNew={() => setCreating(true)} customers={customers.data ?? []} />
+            }
           />
         ) : (
           <DataTable
             columns={columns}
             rows={customers.data}
             rowKey={(customer) => customer.id}
-            onRowClick={(customer) => open(customer.id)}
+            onRowClick={(customer) => open(customer.shortId)}
             searchPlaceholder={t("customers.search")}
             matches={(customer, query) =>
               searchable(
@@ -168,7 +203,7 @@ export function CustomersPage() {
         )}
       </div>
       {creating && <CustomerForm customer={null} onClose={() => setCreating(false)} />}
-      {openId && <CustomerDetails customerId={openId} onClose={() => open(null)} />}
+      {opened && <CustomerDetails customerId={opened.id} onClose={() => open(null)} />}
     </>
   );
 }
@@ -220,11 +255,28 @@ function CustomerForm({
     lastName: customer?.lastName ?? "",
     phone: customer?.phone ?? "",
     email: customer?.email ?? "",
+    birthDate: customer?.birthDate ?? "",
+    document: customer?.document ?? "",
+    gender: customer?.gender ?? "",
     notes: customer?.notes ?? "",
   });
   const [errors, setErrors] = useState<FieldErrors>({});
   const set = (field: keyof typeof values, value: string) =>
     setValues((current) => ({ ...current, [field]: value }));
+  const [moreOpen, setMoreOpen] = useState(false);
+  // A mistake in there opens it, so it isn't hidden.
+  const showMore = moreOpen || Boolean(errors.birthDate || errors.document || errors.gender);
+  const extras = [
+    values.birthDate &&
+      new Intl.DateTimeFormat(i18n.resolvedLanguage, {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        timeZone: "UTC",
+      }).format(Date.parse(`${values.birthDate}T00:00:00Z`)),
+    values.gender && t(`booking.genders.${values.gender as Gender}`),
+    values.document,
+  ].filter(Boolean);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -310,6 +362,90 @@ function CustomerForm({
           />
         )}
       </Field>
+      {/* Advanced: folded away, with what's filled in shown on the closed row. */}
+      <div className="border-t border-zinc-100 pt-2">
+        <button
+          type="button"
+          aria-expanded={showMore}
+          onClick={() => setMoreOpen(!showMore)}
+          className="-mx-2 flex w-[calc(100%+1rem)] items-center justify-between gap-3 rounded-lg px-2 py-2 text-left transition-colors outline-none hover:bg-zinc-50 focus-visible:ring-2 focus-visible:ring-brand-500/40"
+        >
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-zinc-800">
+              {t("customers.moreDetails")}
+            </span>
+            {/* Closed, what's filled in; open, the fields say it themselves. */}
+            {!showMore && (
+              <span className="mt-0.5 block text-[13px] text-zinc-500">
+                {extras.length > 0 ? extras.join(" · ") : t("customers.moreDetailsHint")}
+              </span>
+            )}
+          </span>
+          <ChevronDown
+            className={cn(
+              "size-4 shrink-0 text-zinc-400 transition-transform",
+              showMore && "rotate-180",
+            )}
+            aria-hidden
+          />
+        </button>
+        {showMore && (
+          <div className="mt-2 grid grid-cols-2 items-end gap-4">
+            <div className="col-span-2">
+              <Field
+                label={t("booking.birthDate")}
+                error={fieldMessage(t, "birthDate", errors.birthDate)}
+              >
+                {(props) => (
+                  <BirthDateField
+                    id={props.id}
+                    describedBy={props["aria-describedby"]}
+                    invalid={props["aria-invalid"]}
+                    value={values.birthDate}
+                    onChange={(date) => set("birthDate", date)}
+                    locale={i18n.resolvedLanguage ?? "es"}
+                    labels={{
+                      day: t("booking.birthDay"),
+                      month: t("booking.birthMonth"),
+                      year: t("booking.birthYear"),
+                    }}
+                  />
+                )}
+              </Field>
+            </div>
+            <Field label={t("booking.gender")}>
+              {(props) => (
+                <Select
+                  {...props}
+                  value={values.gender}
+                  onChange={(event) => set("gender", event.target.value)}
+                >
+                  <option value="">{t("booking.genderPlaceholder")}</option>
+                  {GENDERS.map((gender) => (
+                    <option key={gender} value={gender}>
+                      {t(`booking.genders.${gender}`)}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            <Field
+              label={t("booking.document")}
+              error={fieldMessage(t, "document", errors.document)}
+            >
+              {(props) => (
+                <Input
+                  {...props}
+                  maxLength={40}
+                  value={values.document}
+                  onChange={(event) => set("document", event.target.value)}
+                />
+              )}
+            </Field>
+            <p className="col-span-2 text-[13px] text-zinc-500">{t("customers.moreDetailsNote")}</p>
+          </div>
+        )}
+      </div>
       <Field label={t("customers.notes")} optional hint={t("customers.notesHint")}>
         {(props) => (
           <Textarea
@@ -409,6 +545,7 @@ function History({ history }: { history: CustomerAppointment[] }) {
           {history.map((appointment) => {
             const upcoming = Date.parse(appointment.startsAt) > now;
             const cancelled = appointment.status === "cancelled";
+            const noShow = appointment.status === "no_show";
             return (
               <li
                 key={appointment.id}
@@ -418,7 +555,7 @@ function History({ history }: { history: CustomerAppointment[] }) {
                   <div className="min-w-0">
                     <p
                       className={
-                        cancelled
+                        cancelled || noShow
                           ? "truncate text-zinc-400 line-through"
                           : "truncate font-medium text-zinc-900"
                       }
@@ -438,6 +575,8 @@ function History({ history }: { history: CustomerAppointment[] }) {
                   </div>
                   {cancelled ? (
                     <Badge>{t("customers.cancelled")}</Badge>
+                  ) : noShow ? (
+                    <Badge tone="warning">{t("agenda.statusNoShow")}</Badge>
                   ) : upcoming ? (
                     <Badge tone="brand">{t("customers.upcoming")}</Badge>
                   ) : (

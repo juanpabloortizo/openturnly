@@ -21,7 +21,7 @@ import { type Cell, downloadCsv, downloadXlsx } from "../../lib/export.ts";
 import { errorMessage } from "../../lib/forms.ts";
 import { useBusinessContext } from "./business.tsx";
 
-type Status = "all" | "confirmed" | "cancelled";
+type Status = "all" | "confirmed" | "no_show" | "cancelled";
 
 /** "Página de reservas", "Panel" or "Agente IA · WhatsApp": where an appointment came from. */
 export function bookedVia(
@@ -106,7 +106,7 @@ export function AppointmentsList({
         const start = zoned(appointment.startsAt);
         const end = zoned(appointment.endsAt);
         return (
-          <div className={cn(appointment.status === "cancelled" && "opacity-60")}>
+          <div className={cn(appointment.status !== "confirmed" && "opacity-60")}>
             <div className="font-medium text-zinc-900 first-letter:uppercase">
               {day.format(new Date(`${start.date}T12:00:00Z`))}
             </div>
@@ -165,6 +165,8 @@ export function AppointmentsList({
       cell: (appointment) =>
         appointment.status === "cancelled" ? (
           <Badge tone="danger">{t("agenda.statusCancelled")}</Badge>
+        ) : appointment.status === "no_show" ? (
+          <Badge tone="warning">{t("agenda.statusNoShow")}</Badge>
         ) : Date.parse(appointment.startsAt) > now ? (
           <Badge tone="brand">{t("agenda.statusUpcoming")}</Badge>
         ) : (
@@ -221,7 +223,9 @@ export function AppointmentsList({
         appointment.code,
         appointment.status === "cancelled"
           ? t("agenda.statusCancelled")
-          : t("agenda.statusConfirmed"),
+          : appointment.status === "no_show"
+            ? t("agenda.statusNoShow")
+            : t("agenda.statusConfirmed"),
         start.date,
         start.time,
         end.time,
@@ -283,7 +287,7 @@ export function AppointmentsList({
                 />
               </div>
               <div className="inline-flex rounded-md bg-zinc-100 p-0.5">
-                {(["all", "confirmed", "cancelled"] as const).map((option) => (
+                {(["all", "confirmed", "no_show", "cancelled"] as const).map((option) => (
                   <button
                     key={option}
                     type="button"

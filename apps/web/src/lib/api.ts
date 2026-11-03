@@ -4,9 +4,12 @@ import type {
   AutomationTrigger,
   BookingAnswer,
   BookingForm,
+  CommissionType,
+  Gender,
   GiftCardKind,
   PageTheme,
   PaymentMethod,
+  ProductAttributeKind,
   ProductUnit,
   SaleItemKind,
   SalePaymentMethod,
@@ -63,6 +66,8 @@ export type BusinessAccess = {
 
 export type Business = {
   id: string;
+  /** What admin URLs use instead of the id: /admin/<shortId>. */
+  shortId: string;
   slug: string;
   name: string;
   description: string | null;
@@ -97,10 +102,15 @@ export type HolidaySettings = {
   holidays: { date: string; name: string; closed: boolean }[];
 };
 
+/** "no_show": the customer didn't come; it frees the time it had. */
+export type AppointmentStatus = "confirmed" | "cancelled" | "no_show";
+
 export type Service = {
   id: string;
   name: string;
   description: string | null;
+  /** Groups the booking page's menu; null: no group. */
+  category: string | null;
   durationMin: number;
   priceAmount: number | null;
   active: boolean;
@@ -116,6 +126,8 @@ export type Professional = {
   /** Locations they work at. */
   locationIds: string[];
   hasOwnHours: boolean;
+  /** Their photo for the booking page, or null (their initials show). */
+  photoUrl: string | null;
   /** Percent of the services and products they sell that is theirs. */
   serviceCommission: number;
   productCommission: number;
@@ -155,7 +167,7 @@ export type Appointment = {
   code: string;
   startsAt: string;
   endsAt: string;
-  status: "confirmed" | "cancelled";
+  status: AppointmentStatus;
   locationId: string | null;
   locationName: string | null;
   serviceId: string | null;
@@ -178,6 +190,7 @@ export type Appointment = {
   depositAmount: number;
   customer: {
     id: string;
+    shortId: string;
     firstName: string;
     lastName: string;
     email: string | null;
@@ -210,7 +223,7 @@ export type PublicBusiness = Pick<
 export type PublicCatalog = {
   business: PublicBusiness;
   services: Omit<Service, "active" | "locationIds">[];
-  professionals: { id: string; name: string; serviceIds: string[] }[];
+  professionals: { id: string; name: string; photoUrl: string | null; serviceIds: string[] }[];
   /** Locations taking bookings, with what each offers and who works there. */
   locations: PublicLocation[];
 };
@@ -277,6 +290,8 @@ export type Sale = {
     unitPrice: number;
     discountAmount: number;
     total: number;
+    /** Products: the IVA their price included when sold, in percent. */
+    taxRate: number | null;
   }[];
   tips: { id: string; resourceId: string | null; resourceName: string; amount: number }[];
   payments: {
@@ -293,18 +308,36 @@ export type Product = {
   id: string;
   name: string;
   sku: string | null;
-  category: string | null;
-  brand: string | null;
-  format: string | null;
+  categoryId: string | null;
+  brandId: string | null;
+  /** How much it holds, in `unit`: 400 (ml); both or neither. */
   content: number | null;
-  unit: ProductUnit;
+  unit: ProductUnit | null;
+  description: string | null;
   priceAmount: number;
+  internalPriceAmount: number | null;
   costAmount: number | null;
-  minStock: number;
+  /** A percent, or for "fixed" an amount per unit in minor units; null: the seller's own. */
+  commissionValue: number | null;
+  commissionType: CommissionType;
+  /** The price includes this IVA, in percent. */
+  taxRate: number | null;
   forSale: boolean;
   active: boolean;
   /** Units by location id. */
   stock: Record<string, number>;
+  /** Where a warning shows, by location id: at this many units or fewer. */
+  alerts: Record<string, number>;
+};
+
+/** An entry of the business's categories or brands, with how many products use it. */
+export type ProductAttribute = {
+  id: string;
+  kind: ProductAttributeKind;
+  /** "Cuidado capilar", "Pantene". */
+  name: string;
+  products: number;
+  createdAt: string;
 };
 
 export type StockMovement = {
@@ -365,10 +398,18 @@ export type Deposit = {
 /** A row of the customer list. */
 export type CustomerSummary = {
   id: string;
+  /** What links use instead of the id: ?customer=<shortId>. */
+  shortId: string;
   firstName: string;
   lastName: string;
   email: string | null;
   phone: string | null;
+  /** Optional details, asked on the booking form if the business wants. */
+  birthDate: string | null;
+  document: string | null;
+  gender: Gender | null;
+  /** Private notes; only admins get them. */
+  notes: string | null;
   createdAt: string;
   /** Confirmed appointments, past and upcoming. */
   visits: number;
@@ -377,7 +418,6 @@ export type CustomerSummary = {
 };
 
 export type Customer = Omit<CustomerSummary, "visits" | "lastVisit" | "nextVisit"> & {
-  notes: string | null;
   updatedAt: string;
 };
 
@@ -386,7 +426,7 @@ export type CustomerAppointment = {
   code: string;
   startsAt: string;
   endsAt: string;
-  status: "confirmed" | "cancelled";
+  status: AppointmentStatus;
   serviceName: string;
   resourceName: string | null;
   priceAmount: number | null;

@@ -148,6 +148,62 @@
       "when": 1793316191220,
       "tag": "0020_commissions",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793334987924,
+      "tag": "0021_short_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793336127437,
+      "tag": "0022_product_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793336163218,
+      "tag": "0023_product_catalog_cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793389885830,
+      "tag": "0024_product_formats_as_text",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793395207265,
+      "tag": "0025_product_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793395233503,
+      "tag": "0026_drop_product_formats",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1793676268045,
+      "tag": "0027_professional_photos_service_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1793677226393,
+      "tag": "0028_customer_details",
+      "breakpoints": true
     }
   ]
 }

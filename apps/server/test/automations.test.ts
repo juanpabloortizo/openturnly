@@ -2,7 +2,9 @@ import { createHmac } from "node:crypto";
 import { createServer, type IncomingHttpHeaders } from "node:http";
 import type { AddressInfo } from "node:net";
 import { addDays, todayIn, weekdayOf, zonedTimeToInstant } from "@openturnly/core";
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
+import { appointments } from "../src/db/schema.ts";
 import { signDelivery } from "../src/lib/automations.ts";
 import { createBusiness, createTestApp, setUpOwner } from "./helpers.ts";
 
@@ -397,6 +399,38 @@ describe("automations", () => {
     expect(history.body.deliveries.map((d: { status: string }) => d.status).sort()).toEqual([
       "sent",
       "skipped",
+    ]);
+  });
+
+  it("tell about a no-show, and skip what waited for that appointment", async () => {
+    const { app, owner, base, book, engine } = await shop();
+    const reminders = await receiver();
+    const noShows = await receiver();
+    await owner.post(`${base}/automations`, {
+      name: "Diez minutos después",
+      trigger: "created",
+      offsetMin: 10,
+      actions: [webhook(reminders.url)],
+    });
+    await owner.post(`${base}/automations`, {
+      name: "Te extrañamos",
+      trigger: "no_show",
+      offsetMin: 5,
+      actions: [webhook(noShows.url)],
+    });
+    const booked = (await book("09:00")).body.appointment;
+    // It started half an hour ago and nobody came.
+    const start = new Date(Date.now() - 30 * 60_000);
+    await app.db
+      .update(appointments)
+      .set({ startsAt: start, endsAt: new Date(start.getTime() + 60 * 60_000) })
+      .where(eq(appointments.id, booked.id));
+    expect((await owner.post(`${base}/appointments/${booked.id}/no-show`, {})).status).toBe(200);
+
+    expect(await engine.deliverDue(Date.now() + 11 * 60_000)).toBe(2);
+    expect(reminders.received).toHaveLength(0);
+    expect(noShows.received.map((r) => r.headers["x-openturnly-event"])).toEqual([
+      "appointment.no_show",
     ]);
   });
 

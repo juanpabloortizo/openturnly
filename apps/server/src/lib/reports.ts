@@ -175,9 +175,84 @@ async function figures(db: Queryable, business: Business, period: Period, locati
   };
 }
 
+export type SeriesUnit = "day" | "week" | "month";
+
+/** How the chart groups a period: by day up to six weeks, by week up to six months, else by month. */
+function seriesUnit(period: Period): SeriesUnit {
+  const days =
+    (Date.parse(`${period.to}T00:00:00Z`) - Date.parse(`${period.from}T00:00:00Z`)) / 86_400_000 +
+    1;
+  return days <= 45 ? "day" : days <= 190 ? "week" : "month";
+}
+
+/** The first day of the group a date falls in (weeks start on Monday), never before `from`. */
+function groupStart(date: string, unit: SeriesUnit, from: string) {
+  const start =
+    unit === "day"
+      ? date
+      : unit === "week"
+        ? addDays(date, -((weekdayOf(date) + 6) % 7))
+        : `${date.slice(0, 8)}01`;
+  return start < from ? from : start;
+}
+
 /**
- * The summary report: headline figures against the period before, where bookings came
- * from, what sold most, each professional's work and today's appointments.
+ * Bookings and sales of each day, week or month of the period, empty ones included, for the
+ * chart. They add up to the headline figures.
+ */
+async function series(db: Queryable, business: Business, period: Period, locationId?: string) {
+  const { start, end } = instants(business, period);
+  const unit = seriesUnit(period);
+  const points = new Map<string, { start: string; bookings: number; billed: number }>();
+  for (let date = period.from; date <= period.to; date = addDays(date, 1)) {
+    const key = groupStart(date, unit, period.from);
+    if (!points.has(key)) points.set(key, { start: key, bookings: 0, billed: 0 });
+  }
+  const pointAt = (instant: Date) =>
+    points.get(
+      groupStart(instantToZoned(instant.getTime(), business.timezone).date, unit, period.from),
+    );
+
+  const booked = await db
+    .select({ startsAt: appointments.startsAt })
+    .from(appointments)
+    .where(
+      and(
+        eq(appointments.businessId, business.id),
+        eq(appointments.status, "confirmed"),
+        gte(appointments.startsAt, start),
+        lt(appointments.startsAt, end),
+        locationId ? eq(appointments.locationId, locationId) : undefined,
+      ),
+    );
+  for (const row of booked) {
+    const point = pointAt(row.startsAt);
+    if (point) point.bookings++;
+  }
+  const sold = await db
+    .select({ createdAt: sales.createdAt, total: sales.total })
+    .from(sales)
+    .where(
+      and(
+        eq(sales.businessId, business.id),
+        eq(sales.status, "paid"),
+        eq(sales.internal, false),
+        gte(sales.createdAt, start),
+        lt(sales.createdAt, end),
+        locationId ? eq(sales.locationId, locationId) : undefined,
+      ),
+    );
+  for (const row of sold) {
+    const point = pointAt(row.createdAt);
+    if (point) point.billed += row.total;
+  }
+  return { unit, points: [...points.values()] };
+}
+
+/**
+ * The summary report: headline figures against the period before, the same day by day (or
+ * week by week) for the chart, where bookings came from, what sold most, each professional's
+ * work and today's appointments.
  */
 export async function summaryReport(
   db: Queryable,
@@ -186,9 +261,10 @@ export async function summaryReport(
   locationId?: string,
 ) {
   const { start, end } = instants(business, period);
-  const [current, previous] = await Promise.all([
+  const [current, previous, chart] = await Promise.all([
     figures(db, business, period, locationId),
     figures(db, business, previousPeriod(period), locationId),
+    series(db, business, period, locationId),
   ]);
   const inPeriod = and(
     eq(appointments.businessId, business.id),
@@ -283,6 +359,7 @@ export async function summaryReport(
     previous: previousPeriod(period),
     current,
     before: previous,
+    series: chart,
     origin: Object.fromEntries(origin.map((row) => [row.source, row.total])),
     topServices,
     byProfessional,
@@ -394,6 +471,8 @@ export async function commissionsReport(
             resourceId: saleItems.resourceId,
             quantity: saleItems.quantity,
             total: saleItems.total,
+            commissionValue: saleItems.commissionValue,
+            commissionType: saleItems.commissionType,
           })
           .from(saleItems)
           .where(and(inArray(saleItems.saleId, ids), ne(saleItems.kind, "gift_card")))
@@ -433,7 +512,22 @@ export async function commissionsReport(
       const services = base("service");
       const products = base("product");
       const serviceCommission = Math.round((services * person.serviceCommission) / 100);
-      const productCommission = Math.round((products * person.productCommission) / 100);
+      // A product with its own commission pays that (a percent, or an amount per unit);
+      // the others pay the person's usual product percent.
+      const productCommission = Math.round(
+        theirs
+          .filter((line) => line.kind === "product")
+          .reduce((sum, line) => {
+            const base = line.total * (share.get(line.saleId) ?? 0);
+            if (line.commissionType === "fixed")
+              return sum + (line.commissionValue ?? 0) * line.quantity;
+            const rate =
+              line.commissionType === "percent"
+                ? (line.commissionValue ?? 0)
+                : person.productCommission;
+            return sum + (base * rate) / 100;
+          }, 0),
+      );
       const tipAmount = tips
         .filter((tip) => tip.resourceId === person.id)
         .reduce((sum, tip) => sum + tip.amount, 0);

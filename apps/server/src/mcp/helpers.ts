@@ -59,6 +59,7 @@ const EXPLANATIONS: Record<string, string> = {
   appointment_not_found:
     "No appointment matches that booking code (and phone or email). Ask the customer to check them.",
   appointment_cancelled: "That appointment is already cancelled.",
+  appointment_no_show: "That appointment was marked as a no-show: the customer didn't come.",
   too_late_to_change:
     "It is too late for the customer to change or cancel this appointment themselves; they should contact the business.",
   changes_not_allowed:

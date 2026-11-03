@@ -279,10 +279,17 @@ export const bookingQuestionSchema = z
   });
 export type BookingQuestion = z.infer<typeof bookingQuestionSchema>;
 
+/** Details about the customer the booking form can also ask for; left out unless chosen. */
+export const EXTRA_CUSTOMER_FIELDS = ["birthDate", "document", "gender"] as const;
+export type ExtraCustomerField = (typeof EXTRA_CUSTOMER_FIELDS)[number];
+
 export const bookingFormSchema = z
   .object({
     phone: z.enum(FIELD_RULES),
     email: z.enum(FIELD_RULES),
+    birthDate: z.enum(FIELD_RULES).default("hidden"),
+    document: z.enum(FIELD_RULES).default("hidden"),
+    gender: z.enum(FIELD_RULES).default("hidden"),
     questions: z.array(bookingQuestionSchema).max(MAX_QUESTIONS),
   })
   .refine((form) => form.phone === "required" || form.email === "required", {
@@ -295,6 +302,9 @@ export type BookingForm = z.infer<typeof bookingFormSchema>;
 export const DEFAULT_BOOKING_FORM: BookingForm = {
   phone: "required",
   email: "optional",
+  birthDate: "hidden",
+  document: "hidden",
+  gender: "hidden",
   questions: [],
 };
 
@@ -340,6 +350,8 @@ export type BusinessUpdateInput = z.infer<typeof businessUpdateSchema>;
 export const serviceSchema = z.object({
   name: z.string().trim().min(1).max(120),
   description: optionalText(1000),
+  /** Groups the booking page's menu ("Cortes", "Barba"…). */
+  category: optionalText(60),
   durationMin: z.number().int().min(5).max(600),
   /** Minor currency units (cents). Null means "ask at the business". */
   /** Always shown on the booking page; 0 for free services. */
@@ -477,11 +489,37 @@ function requireContact(
   }
 }
 
+export const GENDERS = ["female", "male", "other"] as const;
+export type Gender = (typeof GENDERS)[number];
+
+/** A birth date between 1900 and today; empty is no date. */
+const optionalBirthDate = z
+  .union([calendarDate, z.literal("")])
+  .refine(
+    (value) => !value || (value >= "1900-01-01" && value <= new Date().toISOString().slice(0, 10)),
+    "invalid_date",
+  )
+  .transform((value) => value || null)
+  .nullable()
+  .optional();
+
+const optionalGender = z
+  .union([z.enum(GENDERS), z.literal("")])
+  .transform((value) => value || null)
+  .nullable()
+  .optional();
+
+/** An ID number as the customer writes it ("1.020.304.050", "AB123456"). */
+const optionalDocument = optionalText(40);
+
 const customerFields = z.object({
   firstName: personName,
   lastName: personName,
   phone: optionalPhone,
   email: optionalEmail,
+  birthDate: optionalBirthDate,
+  document: optionalDocument,
+  gender: optionalGender,
   /** Private notes for the business, never shown to the customer. */
   notes: optionalText(1000),
 });
@@ -491,6 +529,48 @@ export const customerAdminSchema = customerFields.superRefine(requireContact);
 export type CustomerAdminInput = z.input<typeof customerAdminSchema>;
 /** Edits send only what changed; the server checks a contact is left. */
 export const customerPatchSchema = customerFields.partial();
+
+/** Most customers in one import. */
+export const MAX_IMPORT_ROWS = 5000;
+
+/**
+ * Customers from a spreadsheet, as the file has them; each row is checked on the server
+ * with `importedCustomerSchema`. `apply: false` only previews what would happen.
+ */
+export const customerImportSchema = z.object({
+  rows: z
+    .array(
+      z.object({
+        firstName: z.string().max(200).default(""),
+        lastName: z.string().max(200).default(""),
+        phone: z.string().max(60).default(""),
+        email: z.string().max(200).default(""),
+        notes: z.string().max(2000).default(""),
+      }),
+    )
+    .min(1)
+    .max(MAX_IMPORT_ROWS),
+  /** Customers already there (same mobile, or else email) get the file's details. */
+  update: z.boolean().default(true),
+  apply: z.boolean().default(false),
+});
+export type CustomerImportInput = z.input<typeof customerImportSchema>;
+
+/**
+ * One imported row: a first name and a way to reach them; lists often have no last name.
+ * Numbers without a country code are read as the business's country.
+ */
+export function importedCustomerSchema(country?: string | null) {
+  return z
+    .object({
+      firstName: personName,
+      lastName: z.string().transform(tidyName).pipe(z.string().max(100)),
+      phone: phoneField(country),
+      email: optionalEmail,
+      notes: optionalText(1000),
+    })
+    .superRefine(requireContact);
+}
 
 /**
  * An appointment the business books itself: an existing customer, or a new one's details
@@ -529,10 +609,32 @@ function contactField(
 }
 
 /**
+ * A detail the form may ask for: dropped when it isn't asked (or for forms saved before it
+ * existed), and required when the business says so.
+ */
+function askedField<T>(rule: FieldRule | undefined, field: z.ZodType<T | null | undefined>) {
+  if (!rule || rule === "hidden") {
+    return z
+      .unknown()
+      .optional()
+      .transform((): T | null => null);
+  }
+  const value = field.transform((given) => given ?? null);
+  if (rule === "optional") return value;
+  return value.superRefine((given, ctx) => {
+    if (given === null) ctx.addIssue({ code: "custom", message: "required" });
+  });
+}
+
+/**
  * The customer details and answers a booking needs, following the business's form. Used
  * by the booking page and the server, so both apply the same rules.
  */
-export function bookingDetailsSchema(form: BookingForm, country?: string | null) {
+export function bookingDetailsSchema(
+  // The input shape: forms saved before a field existed don't have it.
+  form: z.input<typeof bookingFormSchema>,
+  country?: string | null,
+) {
   return z.object({
     customer: z.object({
       firstName: personName,
@@ -540,6 +642,9 @@ export function bookingDetailsSchema(form: BookingForm, country?: string | null)
       // Numbers typed without a country code are read as the business's country.
       phone: contactField(form.phone, phoneField(country)),
       email: contactField(form.email, optionalEmail),
+      birthDate: askedField(form.birthDate, optionalBirthDate),
+      document: askedField(form.document, optionalDocument),
+      gender: askedField(form.gender, optionalGender),
     }),
     answers: z
       .record(z.string(), z.string().max(1000))
@@ -552,7 +657,7 @@ export function bookingDetailsSchema(form: BookingForm, country?: string | null)
             if (question.required) {
               ctx.addIssue({ code: "custom", message: "required", path: [question.id] });
             }
-          } else if (question.type === "select" && !question.options.includes(value)) {
+          } else if (question.type === "select" && !(question.options ?? []).includes(value)) {
             ctx.addIssue({ code: "custom", message: "invalid_value", path: [question.id] });
           } else {
             answers.push({ id: question.id, label: question.label, value });
@@ -578,6 +683,9 @@ export const bookingSchema = z.object({
     lastName: z.string(),
     phone: z.string().nullish(),
     email: z.string().nullish(),
+    birthDate: z.string().nullish(),
+    document: z.string().nullish(),
+    gender: z.string().nullish(),
   }),
   answers: z.record(z.string(), z.string()).nullish(),
   /** A discount code the customer typed. */
@@ -614,6 +722,7 @@ export const AUTOMATION_TRIGGERS = [
   "created",
   "rescheduled",
   "cancelled",
+  "no_show",
   "before",
   "after",
 ] as const;
@@ -624,6 +733,7 @@ export const AUTOMATION_EVENTS: Record<AutomationTrigger, string> = {
   created: "appointment.created",
   rescheduled: "appointment.rescheduled",
   cancelled: "appointment.cancelled",
+  no_show: "appointment.no_show",
   before: "appointment.reminder",
   after: "appointment.followup",
 };
@@ -1167,36 +1277,204 @@ export const giftCardPatchSchema = z
 
 // --- Products and stock -------------------------------------------------------
 
-/** What a product's content is measured in ("250 ml", "1 kg", "12 unidades"). */
-export const PRODUCT_UNITS = ["unit", "ml", "l", "g", "kg", "oz"] as const;
+/**
+ * The lists products are organised by, kept per business so everyone picks the same
+ * "Coca-Cola" instead of typing it differently each time.
+ */
+export const PRODUCT_ATTRIBUTE_KINDS = ["category", "brand"] as const;
+export type ProductAttributeKind = (typeof PRODUCT_ATTRIBUTE_KINDS)[number];
+
+/** What a product's content is measured in: "400 ml", "80 g", "12 unidades". */
+export const PRODUCT_UNITS = ["ml", "l", "g", "kg", "oz", "unit"] as const;
 export type ProductUnit = (typeof PRODUCT_UNITS)[number];
 
-const label = (max: number) => optionalText(max);
+/** How people write each unit, without accents: "gr", "litros", "und"… */
+const UNIT_WORDS: Record<ProductUnit, string[]> = {
+  ml: ["ml", "mls", "cc", "mililitro", "mililitros", "milliliter", "milliliters"],
+  l: ["l", "lt", "lts", "litro", "litros", "liter", "liters", "litre", "litres"],
+  g: ["g", "gr", "grs", "gramo", "gramos", "gram", "grams"],
+  kg: ["kg", "kgs", "kilo", "kilos", "kilogramo", "kilogramos", "kilogram", "kilograms"],
+  oz: ["oz", "onza", "onzas", "ounce", "ounces"],
+  unit: ["u", "un", "und", "unds", "ud", "uds", "unid", "unidad", "unidades", "unit", "units"],
+};
 
-export const productSchema = z.object({
+/**
+ * A product's content as people write it: "400ml", "80 gr", "1,5 litros", "2 unidades",
+ * "Botella 500 ml", or just "Unidad" (one). Null when there's no number and unit in it.
+ */
+export function parseContent(text: string): { content: number; unit: ProductUnit } | null {
+  const plain = text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+  const unitOf = (word: string) =>
+    PRODUCT_UNITS.find((unit) => UNIT_WORDS[unit].includes(word.replace(/\.$/, "")));
+  const alone = unitOf(plain);
+  if (alone === "unit") return { content: 1, unit: "unit" };
+  const match = plain.match(/(\d+(?:[.,]\d+)?)\s*([a-z]+\.?)$/);
+  const unit = match?.[2] ? unitOf(match[2]) : undefined;
+  const content = Number(match?.[1]?.replace(",", "."));
+  return unit && content > 0 && content <= 1e6 ? { content, unit } : null;
+}
+
+/**
+ * What tells two entries of a list apart: case, accents, spaces and signs don't, so
+ * "Coca-Cola", "coca cola" and "CocaCola" are the same brand, and "400ml" is "400 ml".
+ */
+export function attributeKey(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/** The usual IVA (VAT) by country, in percent, offered when a price includes it. */
+export const DEFAULT_TAX_RATES: Record<string, number> = {
+  AR: 21,
+  BO: 13,
+  CL: 19,
+  CO: 19,
+  CR: 13,
+  DO: 18,
+  EC: 15,
+  ES: 21,
+  GT: 12,
+  HN: 15,
+  MX: 16,
+  NI: 15,
+  PA: 7,
+  PE: 18,
+  PY: 10,
+  SV: 13,
+  UY: 22,
+  VE: 16,
+};
+
+export const productAttributeSchema = z.object({
+  kind: z.enum(PRODUCT_ATTRIBUTE_KINDS),
+  /** "Cuidado capilar", "Pantene". */
+  name: z
+    .string()
+    .trim()
+    .transform((value) => value.replace(/\s+/g, " "))
+    .pipe(z.string().min(1).max(80)),
+});
+export type ProductAttributeInput = z.input<typeof productAttributeSchema>;
+
+/** How a product's own commission is given: a percent of the sale or an amount per unit. */
+export const COMMISSION_TYPES = ["percent", "fixed"] as const;
+export type CommissionType = (typeof COMMISSION_TYPES)[number];
+
+const listId = z.string().min(1).nullable().default(null);
+
+const productFields = z.object({
   name: z.string().trim().min(1).max(160),
-  /** Barcode or the business's own reference. */
-  sku: label(60),
-  category: label(80),
-  brand: label(80),
-  /** Format or presentation: "Botella", "Tubo", "Caja x12"… */
-  format: label(80),
-  /** How much it holds, in `unit`: 250 (ml). */
-  content: z.number().min(0).max(1e6).nullable().default(null),
-  unit: z.enum(PRODUCT_UNITS).default("unit"),
-  /** Sale price and what it costs the business, in minor units. */
+  /** Barcode or the business's own reference; what a bulk upload recognises it by. */
+  sku: optionalText(60),
+  categoryId: listId,
+  brandId: listId,
+  /** How much it holds, in `unit`: 400 (ml). Both or neither. */
+  content: z.number().positive().max(1e6).nullable().default(null),
+  unit: z.enum(PRODUCT_UNITS).nullable().default(null),
+  description: optionalText(1000),
+  /** Sale price, price for the team (internal sales) and what it costs, in minor units. */
   priceAmount: money,
+  internalPriceAmount: money.nullable().default(null),
   costAmount: money.nullable().default(null),
-  /** A warning shows when stock at a location goes down to this. */
-  minStock: z.number().int().min(0).max(1e6).default(0),
+  /** Paid to whoever sells it, instead of their usual product commission. */
+  commissionValue: z.number().min(0).max(1e12).nullable().default(null),
+  commissionType: z.enum(COMMISSION_TYPES).default("percent"),
+  /** The price includes this IVA (VAT), in percent; null when it doesn't say. */
+  taxRate: z.number().min(0).max(100).nullable().default(null),
   /** Sold to customers; off for supplies used only in the services. */
   forSale: z.boolean().default(true),
   active: z.boolean().default(true),
-  /** Units already there when it's created, at `locationId`. */
-  initialStock: z.number().int().min(0).max(1e6).optional(),
-  locationId: z.string().min(1).optional(),
+  /** Units already there when it's created, by location. */
+  initialStock: z
+    .array(z.object({ locationId: z.string().min(1), quantity: z.number().int().min(0).max(1e6) }))
+    .max(100)
+    .optional(),
+  /** A warning shows when stock at a location goes down to `alertAt`; null: no warning. */
+  alerts: z
+    .array(
+      z.object({
+        locationId: z.string().min(1),
+        alertAt: z.number().int().min(0).max(1e6).nullable(),
+      }),
+    )
+    .max(100)
+    .optional(),
 });
+
+/** A percent commission can't be over 100. */
+const commissionFits = (value: { commissionType?: string; commissionValue?: number | null }) =>
+  value.commissionType !== "percent" ||
+  value.commissionValue === null ||
+  value.commissionValue === undefined ||
+  value.commissionValue <= 100;
+
+/** "400" needs its unit, and a unit needs how many: the field that's missing, if one is. */
+export function missingContentField(value: {
+  content?: number | null;
+  unit?: string | null;
+}): "content" | "unit" | null {
+  const content = value.content ?? null;
+  const unit = value.unit ?? null;
+  if (content !== null && unit === null) return "unit";
+  if (content === null && unit !== null) return "content";
+  return null;
+}
+
+export const productSchema = productFields
+  .refine(commissionFits, { message: "too_big", path: ["commissionValue"] })
+  .superRefine((value, context) => {
+    const missing = missingContentField(value);
+    if (missing) context.addIssue({ code: "custom", message: "required", path: [missing] });
+  });
+/**
+ * Changes to a product: any of its fields. Defaults fill in what wasn't sent, so the server
+ * keeps only the fields in the request, and checks the commission and content as a whole.
+ */
+export const productUpdateSchema = productFields.partial();
 export type ProductInput = z.input<typeof productSchema>;
+
+/**
+ * A bulk upload of products, as the cells say (numbers are read on the server, which knows
+ * the currency). Recognised by barcode, else by name, brand and content; new categories and
+ * brands are created on the way.
+ */
+export const MAX_PRODUCT_IMPORT_ROWS = 5000;
+const cell = z.string().max(2000).default("");
+export const productImportSchema = z.object({
+  rows: z
+    .array(
+      z.object({
+        sku: cell,
+        name: cell,
+        category: cell,
+        brand: cell,
+        /** "400 ml", "80 g", "2 unidades". */
+        content: cell,
+        cost: cell,
+        price: cell,
+        internalPrice: cell,
+        commission: cell,
+        commissionType: cell,
+        description: cell,
+        status: cell,
+        taxIncluded: cell,
+        taxRate: cell,
+        /** Units counted at each location (by location id); empty leaves it as it is. */
+        stock: z.record(z.string(), cell).default({}),
+      }),
+    )
+    .min(1)
+    .max(MAX_PRODUCT_IMPORT_ROWS),
+  apply: z.boolean().default(false),
+});
+export type ProductImportInput = z.input<typeof productImportSchema>;
 
 /**
  * What moves stock by hand. "purchase": units come in. "adjustment": a count, which sets

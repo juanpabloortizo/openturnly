@@ -369,6 +369,15 @@ function SalesTable({
 
 /** One sale in full: lines, discount, tips, payments, and voiding it. */
 export function SaleDetails({ sale, onClose }: { sale: Sale; onClose: () => void }) {
+  // The IVA inside the products' prices, after the sale's discount is shared among lines.
+  const share = sale.subtotal > 0 ? sale.total / sale.subtotal : 0;
+  const tax = Math.round(
+    sale.items.reduce(
+      (sum, item) =>
+        item.taxRate ? sum + (item.total * share * item.taxRate) / (100 + item.taxRate) : sum,
+      0,
+    ),
+  );
   const { t, i18n } = useTranslation();
   const { business } = useBusinessContext();
   const confirm = useConfirm();
@@ -486,6 +495,12 @@ export function SaleDetails({ sale, onClose }: { sale: Sale; onClose: () => void
               <dt>{t("checkout.total")}</dt>
               <dd className="tabular-nums">{money(sale.total + sale.tipAmount)}</dd>
             </div>
+            {tax > 0 && (
+              <div className="flex justify-between text-[13px] text-zinc-500">
+                <dt>{t("sales.taxIncluded")}</dt>
+                <dd className="tabular-nums">{money(tax)}</dd>
+              </div>
+            )}
           </dl>
         </div>
         <div>

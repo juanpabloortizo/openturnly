@@ -18,6 +18,7 @@ import {
   businesses,
   locationServices,
   resourceLocations,
+  resourcePhotos,
   resourceServices,
   resources,
   services,
@@ -29,7 +30,7 @@ import { matchCustomer, saveBookingCustomer } from "../lib/customers.ts";
 import { discountFor, usableGiftCard } from "../lib/gift-cards.ts";
 import { businessCountry } from "../lib/holidays.ts";
 import { type AppEnv, apiError, type Deps, parseBody, validateWith } from "../lib/http.ts";
-import { findImage, imageUrls } from "../lib/images.ts";
+import { findImage, imageUrls, photoUrls } from "../lib/images.ts";
 import { listLocations, resolveLocation } from "../lib/locations.ts";
 import { bookingRules, loadSchedules, pickLeastBusy } from "../lib/schedules.ts";
 
@@ -98,6 +99,7 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
         id: services.id,
         name: services.name,
         description: services.description,
+        category: services.category,
         durationMin: services.durationMin,
         priceAmount: services.priceAmount,
       })
@@ -137,6 +139,7 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
 
     const bookable = new Set(bookableLocations.flatMap((place) => place.serviceIds));
     const working = new Set(bookableLocations.flatMap((place) => place.professionalIds));
+    const photos = await photoUrls(db, business.slug, [...working]);
     return {
       locations: bookableLocations,
       services: catalog.filter((service) => bookable.has(service.id)),
@@ -144,6 +147,7 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
         .filter((member) => working.has(member.id))
         .map((member) => ({
           ...member,
+          photoUrl: photos.get(member.id) ?? null,
           serviceIds: links
             .filter((link) => link.resourceId === member.id && bookable.has(link.serviceId))
             .map((link) => link.serviceId),
@@ -201,6 +205,26 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
         // URLs carry the upload time (?v=…), so a new upload gets a new URL.
         return c.body(new Uint8Array(image.data), 200, {
           "Content-Type": image.contentType,
+          "Cache-Control": "public, max-age=31536000, immutable",
+        });
+      })
+
+      .get("/businesses/:slug/professionals/:resourceId/photo", async (c) => {
+        const business = await findBusiness(c.req.param("slug"));
+        const [photo] = await db
+          .select({ contentType: resourcePhotos.contentType, data: resourcePhotos.data })
+          .from(resourcePhotos)
+          .innerJoin(resources, eq(resources.id, resourcePhotos.resourceId))
+          .where(
+            and(
+              eq(resources.businessId, business.id),
+              eq(resourcePhotos.resourceId, c.req.param("resourceId")),
+            ),
+          );
+        if (!photo) throw apiError(404, "not_found");
+        // URLs carry the upload time (?v=…), so a new upload gets a new URL.
+        return c.body(new Uint8Array(photo.data), 200, {
+          "Content-Type": photo.contentType,
           "Cache-Control": "public, max-age=31536000, immutable",
         });
       })

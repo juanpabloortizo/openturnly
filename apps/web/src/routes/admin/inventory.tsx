@@ -4,21 +4,31 @@ import {
   fromMinorUnits,
   instantToZoned,
   MANUAL_STOCK_KINDS,
-  PRODUCT_UNITS,
-  type ProductInput,
-  productSchema,
+  type ProductAttributeKind,
   STOCK_MOVEMENT_KINDS,
   type StockMovementKind,
   stockMovementSchema,
   todayIn,
   zonedTimeToInstant,
 } from "@openturnly/core";
-import { ArrowLeftRight, Package, Plus, Search, TriangleAlert } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  ArrowLeftRight,
+  ChevronDown,
+  Package,
+  Plus,
+  Search,
+  TriangleAlert,
+  Upload,
+} from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Combobox, searchable } from "../../components/combobox.tsx";
-import { useConfirm } from "../../components/confirm.tsx";
-import { EmptyState, Modal, PageHeader, PageTabs, Switch } from "../../components/controls.tsx";
+import {
+  Combobox,
+  searchable,
+  useClickOutside,
+  useMenuPlacement,
+} from "../../components/combobox.tsx";
+import { EmptyState, Modal, PageHeader, PageTabs } from "../../components/controls.tsx";
 import { type Column, DataTable } from "../../components/data-table.tsx";
 import {
   DateRangePicker,
@@ -33,22 +43,36 @@ import { useLocations } from "../../lib/catalog.ts";
 import { cn } from "../../lib/cn.ts";
 import { type Cell, downloadCsv, downloadXlsx } from "../../lib/export.ts";
 import { errorMessage, type FieldErrors, fieldMessage, validate } from "../../lib/forms.ts";
-import {
-  useMoveStock,
-  useProductMutations,
-  useProducts,
-  useStockMovements,
-} from "../../lib/inventory.ts";
+import { contentText, useMoveStock, useProducts, useStockMovements } from "../../lib/inventory.ts";
 import { useTab } from "../../lib/tabs.ts";
 import { ExportMenu } from "./appointments-list.tsx";
 import { useBusinessContext } from "./business.tsx";
+import { ListManager, ProductForm, useProductLists } from "./product-form.tsx";
+import { ImportProducts, productSheet } from "./product-import.tsx";
 
 const TABS = ["products", "movements"] as const;
 
-/** "Reuzel · Pote · 113 g": what tells similar products apart. */
-function productDetail(product: Product, unitLabel: (unit: string) => string) {
-  const content = product.content !== null ? `${product.content} ${unitLabel(product.unit)}` : null;
-  return [product.brand, product.format, content].filter(Boolean).join(" · ");
+/** A category, brand or size in a table cell: one line, cut short if it's long. */
+function ListName({ name }: { name: string | null }) {
+  return (
+    <span
+      className="block max-w-[8rem] truncate whitespace-nowrap text-zinc-600 xl:max-w-[14rem]"
+      title={name ?? undefined}
+    >
+      {name ?? "—"}
+    </span>
+  );
+}
+
+/** At or under its alarm at some location shown. */
+function isLow(product: Product, locationIds: string[]) {
+  return (
+    product.active &&
+    locationIds.some((id) => {
+      const at = product.alerts[id];
+      return at !== undefined && (product.stock[id] ?? 0) <= at;
+    })
+  );
 }
 
 /** Products with their stock at each location, and the history of every movement. */
@@ -56,7 +80,9 @@ export function InventoryPage() {
   const { t } = useTranslation();
   const [tab, setTab] = useTab(TABS);
   const [editing, setEditing] = useState<Product | "new" | null>(null);
+  const [creatingList, setCreatingList] = useState<ProductAttributeKind | null>(null);
   const [moving, setMoving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   return (
     <>
@@ -65,14 +91,15 @@ export function InventoryPage() {
         subtitle={t("inventory.subtitle")}
         actions={
           <>
+            <Button variant="secondary" onClick={() => setUploading(true)}>
+              <Upload className="size-4" aria-hidden />
+              {t("inventory.upload")}
+            </Button>
             <Button variant="secondary" onClick={() => setMoving(true)}>
               <ArrowLeftRight className="size-4" aria-hidden />
               {t("inventory.move")}
             </Button>
-            <Button data-tour="inventory-new" onClick={() => setEditing("new")}>
-              <Plus className="size-4" aria-hidden />
-              {t("inventory.new")}
-            </Button>
+            <NewMenu onProduct={() => setEditing("new")} onList={setCreatingList} />
           </>
         }
       />
@@ -95,8 +122,75 @@ export function InventoryPage() {
           onClose={() => setEditing(null)}
         />
       )}
+      {creatingList && <ListManager kind={creatingList} onClose={() => setCreatingList(null)} />}
       {moving && <StockMovementForm onClose={() => setMoving(false)} />}
+      {uploading && <ImportProducts onClose={() => setUploading(false)} />}
     </>
+  );
+}
+
+/** "Nuevo": a product, or an entry for the category or brand lists. */
+function NewMenu({
+  onProduct,
+  onList,
+}: {
+  onProduct: () => void;
+  onList: (kind: ProductAttributeKind) => void;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const wrapper = useRef<HTMLDivElement>(null);
+  const placement = useMenuPlacement(open, wrapper, 300, "right");
+  useClickOutside(open, [wrapper], () => setOpen(false));
+  const options = [
+    { key: "product", title: t("inventory.newProduct"), pick: onProduct },
+    ...(["category", "brand"] as const).map((kind) => ({
+      key: kind,
+      title: t(`inventory.lists.${kind}.new`),
+      pick: () => onList(kind),
+    })),
+  ];
+  return (
+    <div ref={wrapper} className="relative">
+      <Button
+        data-tour="inventory-new"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <Plus className="size-4" aria-hidden />
+        {t("inventory.new")}
+        <ChevronDown className="size-4 opacity-70" aria-hidden />
+      </Button>
+      {open && (
+        <div
+          role="menu"
+          style={placement}
+          className="absolute top-full right-0 z-30 mt-1 w-[300px] max-w-[calc(100vw-1rem)] rounded-xl bg-white p-1 shadow-lg ring-1 ring-zinc-200"
+        >
+          {options.map((option, index) => (
+            <button
+              key={option.key}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                option.pick();
+              }}
+              className={cn(
+                "block w-full rounded-lg px-3 py-2 text-left hover:bg-zinc-100",
+                index === 1 && "mt-1 border-t border-zinc-100 pt-2.5",
+              )}
+            >
+              <span className="block text-sm font-medium text-zinc-900">{option.title}</span>
+              <span className="block text-[13px] text-zinc-500">
+                {t(`inventory.menu.${option.key}` as "inventory.menu.product")}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -107,10 +201,11 @@ function ProductsTable({
   onOpen: (product: Product) => void;
   onNew: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { business } = useBusinessContext();
   const products = useProducts(business.id);
   const locations = useLocations(business.id).data ?? [];
+  const lists = useProductLists(business.id);
   const [locationId, setLocationId] = useState("");
   const [category, setCategory] = useState("");
   const [brand, setBrand] = useState("");
@@ -118,32 +213,27 @@ function ProductsTable({
   const [alarms, setAlarms] = useState(false);
   const [query, setQuery] = useState("");
   const money = (amount: number) => formatPrice(amount, business.currency);
-  const unitLabel = (unit: string) => t(`inventory.units.${unit}` as "inventory.units.unit");
 
   const shown = locationId ? locations.filter((location) => location.id === locationId) : locations;
   const stockOf = (product: Product) =>
     shown.reduce((sum, location) => sum + (product.stock[location.id] ?? 0), 0);
-  /** At or under the minimum at some location shown that carries it. */
-  const low = (product: Product) =>
-    product.active &&
-    shown.some(
-      (location) =>
-        product.stock[location.id] !== undefined &&
-        (product.stock[location.id] ?? 0) <= product.minStock,
-    );
+  const shownIds = shown.map((location) => location.id);
+  const low = (product: Product) => isLow(product, shownIds);
+  const size = (product: Product) => contentText(t, i18n.language, product);
+  /** "Reuzel · 113 g": what tells similar products apart. */
+  const detail = (product: Product) =>
+    [lists.nameOf(product.brandId), size(product)].filter(Boolean).join(" · ");
 
   const all = products.data ?? [];
-  const categories = [...new Set(all.flatMap((p) => (p.category ? [p.category] : [])))].sort();
-  const brands = [...new Set(all.flatMap((p) => (p.brand ? [p.brand] : [])))].sort();
   const needle = searchable(query.trim());
   const rows = all.filter(
     (product) =>
       (status === "all" || product.active === (status === "active")) &&
-      (!category || product.category === category) &&
-      (!brand || product.brand === brand) &&
+      (!category || product.categoryId === category) &&
+      (!brand || product.brandId === brand) &&
       (!alarms || low(product)) &&
       (!needle ||
-        searchable(`${product.name} ${product.sku ?? ""} ${product.brand ?? ""}`).includes(needle)),
+        searchable(`${product.name} ${product.sku ?? ""} ${detail(product)}`).includes(needle)),
   );
   const alarmCount = all.filter(low).length;
 
@@ -153,9 +243,22 @@ function ProductsTable({
       header: t("inventory.colProduct"),
       cell: (product) => (
         <div className="min-w-0">
-          <div className="truncate font-medium text-zinc-900">{product.name}</div>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-medium text-zinc-900">{product.name}</span>
+            {/* The status has its own column on wide screens. */}
+            {!product.active && (
+              <span className="shrink-0 xl:hidden">
+                <Badge>{t("inventory.inactive")}</Badge>
+              </span>
+            )}
+          </div>
+          {/* Brand and size get their own columns as the screen widens. */}
           <div className="truncate text-[13px] text-zinc-500">
-            {productDetail(product, unitLabel) || product.sku || "—"}
+            <span className="lg:hidden">{detail(product) || product.sku || "—"}</span>
+            <span className="hidden lg:inline xl:hidden">
+              {[size(product), product.sku].filter(Boolean).join(" · ")}
+            </span>
+            <span className="hidden xl:inline">{product.sku}</span>
           </div>
         </div>
       ),
@@ -164,11 +267,23 @@ function ProductsTable({
       key: "category",
       header: t("inventory.category"),
       className: "hidden md:table-cell",
-      cell: (product) => <span className="text-zinc-600">{product.category ?? "—"}</span>,
+      cell: (product) => <ListName name={lists.nameOf(product.categoryId)} />,
+    },
+    {
+      key: "brand",
+      header: t("inventory.brand"),
+      className: "hidden lg:table-cell",
+      cell: (product) => <ListName name={lists.nameOf(product.brandId)} />,
+    },
+    {
+      key: "content",
+      header: t("inventory.content"),
+      className: "hidden xl:table-cell",
+      cell: (product) => <ListName name={size(product)} />,
     },
     {
       key: "price",
-      header: t("inventory.price"),
+      header: t("inventory.colPrice"),
       className: "hidden sm:table-cell text-right whitespace-nowrap",
       cell: (product) => (
         <div className="text-right">
@@ -193,7 +308,13 @@ function ProductsTable({
             "inline-flex items-center gap-1.5 font-medium tabular-nums",
             low(product) ? "text-red-600" : "text-zinc-900",
           )}
-          title={low(product) ? t("inventory.lowStock", { min: product.minStock }) : undefined}
+          title={
+            low(product)
+              ? t("inventory.lowStock", {
+                  min: Math.max(...shownIds.map((id) => product.alerts[id] ?? 0)),
+                })
+              : undefined
+          }
         >
           {low(product) && <TriangleAlert className="size-3.5" aria-hidden />}
           {stockOf(product)}
@@ -203,7 +324,7 @@ function ProductsTable({
     {
       key: "status",
       header: t("inventory.colStatus"),
-      className: "hidden sm:table-cell",
+      className: "hidden xl:table-cell",
       cell: (product) =>
         product.active ? (
           <Badge tone="success">{t("inventory.active")}</Badge>
@@ -213,35 +334,16 @@ function ProductsTable({
     },
   ];
 
-  /** The inventory as a sheet: one row per product, stock per location. */
-  const sheet = (): Cell[][] => [
-    [
-      t("inventory.colProduct"),
-      t("inventory.sku"),
-      t("inventory.category"),
-      t("inventory.brand"),
-      t("inventory.format"),
-      t("inventory.content"),
-      `${t("inventory.price")} (${business.currency})`,
-      `${t("inventory.cost")} (${business.currency})`,
-      t("inventory.minStock"),
-      ...shown.map((location) => location.name),
-      t("inventory.colStatus"),
-    ],
-    ...rows.map((product): Cell[] => [
-      product.name,
-      product.sku,
-      product.category,
-      product.brand,
-      product.format,
-      product.content !== null ? `${product.content} ${unitLabel(product.unit)}` : null,
-      fromMinorUnits(product.priceAmount, business.currency),
-      product.costAmount === null ? null : fromMinorUnits(product.costAmount, business.currency),
-      product.minStock,
-      ...shown.map((location) => product.stock[location.id] ?? 0),
-      product.active ? t("inventory.active") : t("inventory.inactive"),
-    ]),
-  ];
+  /** The same sheet the bulk upload reads, so an export can be edited and uploaded back. */
+  const sheet = (): Cell[][] =>
+    productSheet(
+      t,
+      i18n.language,
+      business.currency,
+      rows,
+      shown,
+      new Map((lists.query.data ?? []).map((entry) => [entry.id, entry])),
+    );
   const fileName = `${t("inventory.exportFile")}-${business.slug}-${todayIn(business.timezone)}`;
 
   if (products.isPending) return <Spinner />;
@@ -255,7 +357,7 @@ function ProductsTable({
         action={
           <Button onClick={onNew}>
             <Plus className="size-4" aria-hidden />
-            {t("inventory.new")}
+            {t("inventory.newProduct")}
           </Button>
         }
       />
@@ -265,6 +367,22 @@ function ProductsTable({
   const filter = "w-44 [&_select]:h-8 [&_select]:text-[13px]";
   return (
     <div className="space-y-4">
+      {alarmCount > 0 && !alarms && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900"
+        >
+          <TriangleAlert className="size-4 shrink-0 text-amber-600" aria-hidden />
+          <span className="min-w-0 flex-1">{t("inventory.lowBanner", { count: alarmCount })}</span>
+          <button
+            type="button"
+            onClick={() => setAlarms(true)}
+            className="font-medium text-amber-900 underline-offset-2 hover:underline"
+          >
+            {t("inventory.lowBannerAction")}
+          </button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         {locations.length > 1 && (
           <Select
@@ -281,32 +399,29 @@ function ProductsTable({
             ))}
           </Select>
         )}
-        <Select
-          aria-label={t("inventory.category")}
-          value={category}
-          onChange={(event) => setCategory(event.target.value)}
-          className={filter}
-        >
-          <option value="">{t("inventory.allCategories")}</option>
-          {categories.map((value) => (
-            <option key={value} value={value}>
-              {value}
-            </option>
-          ))}
-        </Select>
-        <Select
-          aria-label={t("inventory.brand")}
-          value={brand}
-          onChange={(event) => setBrand(event.target.value)}
-          className={filter}
-        >
-          <option value="">{t("inventory.allBrands")}</option>
-          {brands.map((value) => (
-            <option key={value} value={value}>
-              {value}
-            </option>
-          ))}
-        </Select>
+        {(
+          [
+            ["category", category, setCategory, t("inventory.allCategories")],
+            ["brand", brand, setBrand, t("inventory.allBrands")],
+          ] as const
+        ).map(([kind, value, setValue, allLabel]) =>
+          lists.of(kind).length === 0 ? null : (
+            <Select
+              key={kind}
+              aria-label={t(`inventory.${kind}`)}
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              className={filter}
+            >
+              <option value="">{allLabel}</option>
+              {lists.of(kind).map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.name}
+                </option>
+              ))}
+            </Select>
+          ),
+        )}
         <Select
           aria-label={t("inventory.colStatus")}
           value={status}
@@ -367,308 +482,13 @@ function ProductsTable({
   );
 }
 
-/** Text with suggestions from what was typed before (categories, brands, formats). */
-function Suggest({
-  id,
-  value,
-  onChange,
-  options,
-  placeholder,
-}: {
-  id: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: string[];
-  placeholder?: string;
-}) {
-  return (
-    <>
-      <Input
-        id={id}
-        list={`${id}-list`}
-        placeholder={placeholder}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-      <datalist id={`${id}-list`}>
-        {options.map((option) => (
-          <option key={option} value={option} />
-        ))}
-      </datalist>
-    </>
-  );
-}
-
-function ProductForm({ product, onClose }: { product: Product | null; onClose: () => void }) {
-  const { t } = useTranslation();
-  const { business } = useBusinessContext();
-  const { save, remove } = useProductMutations(business.id);
-  const products = useProducts(business.id).data ?? [];
-  const locations = useLocations(business.id).data?.filter((location) => location.active) ?? [];
-  const confirm = useConfirm();
-  const [name, setName] = useState(product?.name ?? "");
-  const [sku, setSku] = useState(product?.sku ?? "");
-  const [category, setCategory] = useState(product?.category ?? "");
-  const [brand, setBrand] = useState(product?.brand ?? "");
-  const [format, setFormat] = useState(product?.format ?? "");
-  const [content, setContent] = useState(product?.content?.toString() ?? "");
-  const [unit, setUnit] = useState<string>(product?.unit ?? "unit");
-  const [price, setPrice] = useState(product?.priceAmount ?? 0);
-  const [cost, setCost] = useState(product?.costAmount ?? 0);
-  const [minStock, setMinStock] = useState(String(product?.minStock ?? 0));
-  const [forSale, setForSale] = useState(product?.forSale ?? true);
-  const [active, setActive] = useState(product?.active ?? true);
-  const [initialStock, setInitialStock] = useState("");
-  const [locationId, setLocationId] = useState(locations[0]?.id ?? "");
-  const [errors, setErrors] = useState<FieldErrors>({});
-  const known = (pick: (product: Product) => string | null) =>
-    [...new Set(products.flatMap((item) => (pick(item) ? [pick(item) as string] : [])))].sort();
-
-  const submit = () => {
-    const values: ProductInput = {
-      name,
-      sku,
-      category,
-      brand,
-      format,
-      content: content.trim() ? Number(content.replace(",", ".")) : null,
-      unit: unit as ProductInput["unit"],
-      priceAmount: price,
-      costAmount: cost > 0 ? cost : null,
-      minStock: Number(minStock) || 0,
-      forSale,
-      active,
-      ...(!product && initialStock.trim()
-        ? { initialStock: Number(initialStock), ...(locationId ? { locationId } : {}) }
-        : {}),
-    };
-    const result = validate(productSchema, values);
-    setErrors(result.errors ?? {});
-    if (!result.data) return;
-    save.mutate(
-      { id: product?.id, input: values },
-      {
-        onSuccess: () => {
-          toast.success(product ? t("common.saved") : t("inventory.created"));
-          onClose();
-        },
-        onError: (error) => toast.error(errorMessage(t, error)),
-      },
-    );
-  };
-
-  const deleteProduct = async () => {
-    if (!product) return;
-    const ok = await confirm({
-      title: t("inventory.deleteTitle", { name: product.name }),
-      description: t("inventory.deleteBody"),
-      confirmLabel: t("common.delete"),
-      tone: "danger",
-    });
-    if (ok) {
-      remove.mutate(product.id, {
-        onSuccess: () => {
-          toast.success(t("inventory.deleted"));
-          onClose();
-        },
-        onError: (error) => toast.error(errorMessage(t, error)),
-      });
-    }
-  };
-
-  return (
-    <Modal
-      open
-      wide
-      onClose={onClose}
-      title={product ? t("inventory.edit") : t("inventory.new")}
-      footer={
-        <>
-          {product && (
-            <Button
-              variant="ghost"
-              className="mr-auto text-red-600 hover:bg-red-50 hover:text-red-700"
-              loading={remove.isPending}
-              onClick={deleteProduct}
-            >
-              {t("common.delete")}
-            </Button>
-          )}
-          <Button variant="secondary" onClick={onClose}>
-            {t("common.cancel")}
-          </Button>
-          <Button onClick={submit} loading={save.isPending}>
-            {t("common.save")}
-          </Button>
-        </>
-      }
-    >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field
-          label={t("fields.name")}
-          error={fieldMessage(t, "name", errors.name)}
-          className="sm:col-span-2"
-        >
-          {(props) => (
-            <Input
-              {...props}
-              placeholder={t("inventory.namePlaceholder")}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
-          )}
-        </Field>
-        <Field label={t("inventory.category")} optional>
-          {(props) => (
-            <Suggest
-              id={props.id}
-              value={category}
-              onChange={setCategory}
-              options={known((p) => p.category)}
-            />
-          )}
-        </Field>
-        <Field label={t("inventory.brand")} optional>
-          {(props) => (
-            <Suggest
-              id={props.id}
-              value={brand}
-              onChange={setBrand}
-              options={known((p) => p.brand)}
-            />
-          )}
-        </Field>
-        <Field label={t("inventory.format")} optional>
-          {(props) => (
-            <Suggest
-              id={props.id}
-              value={format}
-              onChange={setFormat}
-              options={known((p) => p.format)}
-              placeholder={t("inventory.formatPlaceholder")}
-            />
-          )}
-        </Field>
-        <Field label={t("inventory.content")} optional>
-          {(props) => (
-            <div className="flex gap-2">
-              <Input
-                {...props}
-                inputMode="decimal"
-                className="text-right tabular-nums"
-                placeholder="250"
-                value={content}
-                onChange={(event) => setContent(event.target.value.replace(/[^\d.,]/g, ""))}
-              />
-              <Select
-                aria-label={t("inventory.unit")}
-                className="w-32 shrink-0"
-                value={unit}
-                onChange={(event) => setUnit(event.target.value)}
-              >
-                {PRODUCT_UNITS.map((value) => (
-                  <option key={value} value={value}>
-                    {t(`inventory.units.${value}`)}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          )}
-        </Field>
-        <Field
-          label={t("inventory.price")}
-          error={fieldMessage(t, "priceAmount", errors.priceAmount)}
-        >
-          {(props) => (
-            <MoneyInput
-              id={props.id}
-              currency={business.currency}
-              value={price}
-              onChange={setPrice}
-            />
-          )}
-        </Field>
-        <Field label={t("inventory.cost")} optional hint={t("inventory.costHint")}>
-          {(props) => (
-            <MoneyInput
-              id={props.id}
-              currency={business.currency}
-              value={cost}
-              onChange={setCost}
-            />
-          )}
-        </Field>
-        <Field label={t("inventory.sku")} optional>
-          {(props) => (
-            <Input {...props} value={sku} onChange={(event) => setSku(event.target.value)} />
-          )}
-        </Field>
-        <Field label={t("inventory.minStock")} hint={t("inventory.minStockHint")}>
-          {(props) => (
-            <Input
-              {...props}
-              inputMode="numeric"
-              className="tabular-nums"
-              value={minStock}
-              onChange={(event) => setMinStock(event.target.value.replace(/\D/g, ""))}
-            />
-          )}
-        </Field>
-        {!product && (
-          <Field label={t("inventory.initialStock")} optional>
-            {(props) => (
-              <div className="flex gap-2">
-                <Input
-                  {...props}
-                  inputMode="numeric"
-                  className="tabular-nums"
-                  placeholder="0"
-                  value={initialStock}
-                  onChange={(event) => setInitialStock(event.target.value.replace(/\D/g, ""))}
-                />
-                {locations.length > 1 && (
-                  <Select
-                    aria-label={t("locations.pick")}
-                    className="w-40 shrink-0"
-                    value={locationId}
-                    onChange={(event) => setLocationId(event.target.value)}
-                  >
-                    {locations.map((location) => (
-                      <option key={location.id} value={location.id}>
-                        {location.name}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </div>
-            )}
-          </Field>
-        )}
-        <div className="space-y-3 border-t border-zinc-100 pt-4 sm:col-span-2">
-          <Switch
-            checked={forSale}
-            onChange={setForSale}
-            label={t("inventory.forSale")}
-            description={t("inventory.forSaleHint")}
-          />
-          <Switch
-            checked={active}
-            onChange={setActive}
-            label={t("inventory.activeLabel")}
-            description={t("inventory.activeHint")}
-          />
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 /** Stock in, a count, internal use or a transfer, by hand. */
 function StockMovementForm({ onClose }: { onClose: () => void }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { business } = useBusinessContext();
   const products = (useProducts(business.id).data ?? []).filter((product) => product.active);
   const locations = useLocations(business.id).data?.filter((location) => location.active) ?? [];
+  const lists = useProductLists(business.id);
   const move = useMoveStock(business.id);
   const [kind, setKind] = useState<(typeof MANUAL_STOCK_KINDS)[number]>("purchase");
   const [productId, setProductId] = useState("");
@@ -760,7 +580,10 @@ function StockMovementForm({ onClose }: { onClose: () => void }) {
                 options={products.map((item) => ({
                   value: item.id,
                   label: item.name,
-                  detail: [item.brand, item.sku].filter(Boolean).join(" · ") || undefined,
+                  detail:
+                    [lists.nameOf(item.brandId), contentText(t, i18n.language, item), item.sku]
+                      .filter(Boolean)
+                      .join(" · ") || undefined,
                 }))}
                 placeholder={t("inventory.pickProduct")}
                 searchPlaceholder={t("inventory.search")}

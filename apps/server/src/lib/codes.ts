@@ -1,6 +1,7 @@
-import { eq } from "drizzle-orm";
+import { SHORT_ID_ALPHABET, SHORT_ID_LENGTH } from "@openturnly/core";
+import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
-import { appointments } from "../db/schema.ts";
+import { appointments, businesses, customers } from "../db/schema.ts";
 
 /** 32 characters without 0/O and 1/I, so codes read well aloud and over the phone. */
 const ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -21,5 +22,38 @@ export async function newBookingCode(db: Pick<Db, "select">): Promise<string> {
       .from(appointments)
       .where(eq(appointments.code, code));
     if (!taken) return code;
+  }
+}
+
+/** "k7m2qx9a4p": a random short id for admin URLs (see core's short-id). */
+export function randomShortId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(SHORT_ID_LENGTH));
+  return Array.from(bytes, (byte) => SHORT_ID_ALPHABET[byte % SHORT_ID_ALPHABET.length]).join("");
+}
+
+/** A short id no other business has (the database would refuse a repeat anyway). */
+export async function newBusinessShortId(db: Pick<Db, "select">): Promise<string> {
+  for (;;) {
+    const shortId = randomShortId();
+    const [taken] = await db
+      .select({ id: businesses.id })
+      .from(businesses)
+      .where(eq(businesses.shortId, shortId));
+    if (!taken) return shortId;
+  }
+}
+
+/** A short id no other customer of the business has. */
+export async function newCustomerShortId(
+  db: Pick<Db, "select">,
+  businessId: string,
+): Promise<string> {
+  for (;;) {
+    const shortId = randomShortId();
+    const [taken] = await db
+      .select({ id: customers.id })
+      .from(customers)
+      .where(and(eq(customers.businessId, businessId), eq(customers.shortId, shortId)));
+    if (!taken) return shortId;
   }
 }

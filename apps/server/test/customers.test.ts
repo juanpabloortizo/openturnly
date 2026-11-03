@@ -237,6 +237,51 @@ describe("booking form", () => {
     ]);
   });
 
+  it("can ask for birth date, document and gender, and keeps them on the customer", async () => {
+    const { app, owner, business, base, haircut } = await shopWithBooking();
+    // Not asked unless the business chooses to.
+    const before = await app.client().get("/api/public/businesses/fte-barber");
+    expect(before.body.business.bookingForm).toMatchObject({
+      birthDate: "hidden",
+      document: "hidden",
+      gender: "hidden",
+    });
+    const form = {
+      phone: "required",
+      email: "optional",
+      birthDate: "required",
+      document: "optional",
+      gender: "optional",
+      questions: [],
+    };
+    expect(
+      (await owner.patch(`/api/businesses/${business.id}`, { bookingForm: form })).status,
+    ).toBe(200);
+    const person = { firstName: "Sara", lastName: "Ríos", phone: "+57 311 222 3344" };
+    const missing = await bookAt(app, { serviceId: haircut.id, time: "11:00", customer: person });
+    expect(missing.body.error.fields).toEqual({ "customer.birthDate": "required" });
+
+    const booked = await bookAt(app, {
+      serviceId: haircut.id,
+      time: "11:00",
+      customer: { ...person, birthDate: "1992-03-08", document: "1.020.304.050", gender: "female" },
+    });
+    expect(booked.status).toBe(201);
+    // Found by their document too.
+    const found = (await owner.get(`${base}/customers?q=1.020.304`)).body.customers;
+    expect(found).toEqual([
+      expect.objectContaining({
+        firstName: "Sara",
+        birthDate: "1992-03-08",
+        document: "1.020.304.050",
+        gender: "female",
+      }),
+    ]);
+    // The business can clear what the customer gave.
+    const cleared = await owner.patch(`${base}/customers/${found[0].id}`, { gender: "" });
+    expect(cleared.body.customer).toMatchObject({ gender: null, birthDate: "1992-03-08" });
+  });
+
   it("always keeps one required way to reach the customer", async () => {
     const { owner, business } = await shopWithBooking();
     const res = await owner.patch(`/api/businesses/${business.id}`, {

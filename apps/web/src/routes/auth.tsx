@@ -10,6 +10,7 @@ import { Alert, Button, buttonClass, Field, Input, Spinner } from "../components
 import { ApiError, api, type Business } from "../lib/api.ts";
 import { usePublicCatalog } from "../lib/booking.ts";
 import { brandStyle } from "../lib/brand.ts";
+import { businessPath } from "../lib/businesses.ts";
 import { errorMessage, type FieldErrors, fieldMessage, validate } from "../lib/forms.ts";
 import { loginPath, rememberLogin, useMe, useSetupStatus } from "../lib/session.ts";
 
@@ -214,7 +215,7 @@ export function BusinessLoginPage() {
       throw new ApiError(403, "no_access_here");
     }
     rememberLogin(slug);
-    return `/admin/businesses/${business.id}`;
+    return businessPath(business);
   });
 
   if (me.isError) return <ServerUnavailable error={me.error} />;

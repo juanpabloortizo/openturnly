@@ -1,4 +1,4 @@
-import type { CustomerAdminInput } from "@openturnly/core";
+import type { CustomerAdminInput, CustomerImportInput } from "@openturnly/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Customer, type CustomerAppointment, type CustomerSummary } from "./api.ts";
 import { businessKeys } from "./catalog.ts";
@@ -55,4 +55,24 @@ export function useCustomerMutations(businessId: string) {
       onSuccess,
     }),
   };
+}
+
+export type ImportSummary = {
+  applied: boolean;
+  counts: { created: number; updated: number; unchanged: number; skipped: number; errors: number };
+  /** Rows with an error, or updated with a warning. */
+  results: { row: number; status: string; error?: string; warning?: string }[];
+};
+
+/** Previews or applies an import of customers from a spreadsheet. */
+export function useImportCustomers(businessId: string) {
+  const { base, all } = customerKeys(businessId);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CustomerImportInput) =>
+      api<ImportSummary>(`${base}/import`, { method: "POST", body: input }),
+    onSuccess: (summary) => {
+      if (summary.applied) queryClient.invalidateQueries({ queryKey: all });
+    },
+  });
 }

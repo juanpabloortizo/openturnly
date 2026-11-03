@@ -1,9 +1,7 @@
 **/node_modules
 **/dist
 data
-.git
-.github
-.claude
-.env
+# Dot-files and folders (git, CI, local settings, .env) stay out of the image.
+.*
 *.db
 *.db-*

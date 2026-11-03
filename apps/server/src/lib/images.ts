@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
-import { businessImages, type ImageKind } from "../db/schema.ts";
+import { businessImages, type ImageKind, resourcePhotos } from "../db/schema.ts";
 
 /** The browser shrinks photos before uploading; this only guards against abuse. */
 export const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
@@ -62,4 +62,21 @@ export async function findImage(db: Db, businessId: string, kind: ImageKind) {
     .from(businessImages)
     .where(and(eq(businessImages.businessId, businessId), eq(businessImages.kind, kind)));
   return image;
+}
+
+/** Public URL of a professional's photo; the version makes browsers fetch new uploads. */
+function photoUrl(slug: string, resourceId: string, updatedAt: Date) {
+  return `/api/public/businesses/${slug}/professionals/${resourceId}/photo?v=${updatedAt.getTime()}`;
+}
+
+/** The photo URL of each of these professionals that has one, in a single query. */
+export async function photoUrls(db: Db, slug: string, resourceIds: string[]) {
+  const urls = new Map<string, string>();
+  if (resourceIds.length === 0) return urls;
+  const rows = await db
+    .select({ resourceId: resourcePhotos.resourceId, updatedAt: resourcePhotos.updatedAt })
+    .from(resourcePhotos)
+    .where(inArray(resourcePhotos.resourceId, resourceIds));
+  for (const row of rows) urls.set(row.resourceId, photoUrl(slug, row.resourceId, row.updatedAt));
+  return urls;
 }

@@ -14,6 +14,11 @@ export type SummaryReport = {
   previous: { from: string; to: string };
   current: Figures;
   before: Figures;
+  /** The period day by day (week, month for longer ones), for the chart. */
+  series: {
+    unit: "day" | "week" | "month";
+    points: { start: string; bookings: number; billed: number }[];
+  };
   origin: Partial<Record<"online" | "admin" | "agent", number>>;
   topServices: { name: string; quantity: number; amount: number }[];
   byProfessional: { name: string; bookings: number }[];

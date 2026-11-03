@@ -8,6 +8,7 @@ import type {
 } from "@openturnly/core";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ApiError,
   type Appointment,
   api,
   type Closure,
@@ -118,17 +119,20 @@ export function useProfessionalMutations(businessId: string) {
   return {
     /**
      * Saves the professional, then their hours at each location they work at (an empty
-     * list follows the location's hours).
+     * list follows the location's hours), then their photo: a new one, null to remove it,
+     * or left out to keep it.
      */
     save: useMutation({
       mutationFn: async ({
         id,
         input,
         hours,
+        photo,
       }: {
         id?: string;
         input: ProfessionalInput;
         hours: Record<string, WeeklyRange[]>;
+        photo?: Blob | null;
       }) => {
         const { professional } = id
           ? await api<{ professional: { id: string } }>(`${base}/professionals/${id}`, {
@@ -142,6 +146,18 @@ export function useProfessionalMutations(businessId: string) {
         for (const [locationId, ranges] of Object.entries(hours)) {
           const body: WeeklyHoursInput = { locationId, resourceId: professional.id, hours: ranges };
           await api(`${base}/hours`, { method: "PUT", body });
+        }
+        const photoPath = `${base}/professionals/${professional.id}/photo`;
+        if (photo === null) await api(photoPath, { method: "DELETE" });
+        if (photo) {
+          const res = await fetch(photoPath, {
+            method: "PUT",
+            headers: { "content-type": photo.type },
+            body: photo,
+            credentials: "same-origin",
+          });
+          const data = await res.json().catch(() => null);
+          if (!res.ok) throw new ApiError(res.status, data?.error?.code ?? "unknown_error");
         }
         return professional;
       },
@@ -350,6 +366,24 @@ export function useCancelAppointment(businessId: string) {
       api(`${base}/appointments/${id}/cancel`, { method: "POST", body: {} }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.appointments }),
   });
+}
+
+/** Marks an appointment as a no-show (the customer didn't come), or undoes it. */
+export function useNoShow(businessId: string) {
+  const { base, keys } = businessKeys(businessId);
+  const queryClient = useQueryClient();
+  const onSuccess = () => queryClient.invalidateQueries({ queryKey: keys.appointments });
+  return {
+    mark: useMutation({
+      mutationFn: (id: string) =>
+        api(`${base}/appointments/${id}/no-show`, { method: "POST", body: {} }),
+      onSuccess,
+    }),
+    undo: useMutation({
+      mutationFn: (id: string) => api(`${base}/appointments/${id}/no-show`, { method: "DELETE" }),
+      onSuccess,
+    }),
+  };
 }
 
 export function useHolidays(businessId: string, language: string) {

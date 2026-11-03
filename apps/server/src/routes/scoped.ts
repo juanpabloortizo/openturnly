@@ -12,6 +12,7 @@ import { giftCardRoutes } from "./gift-cards.ts";
 import { hoursRoutes } from "./hours.ts";
 import { imageRoutes } from "./images.ts";
 import { locationRoutes } from "./locations.ts";
+import { productAttributeRoutes } from "./product-attributes.ts";
 import { productRoutes } from "./products.ts";
 import { professionalRoutes } from "./professionals.ts";
 import { reportRoutes } from "./reports.ts";
@@ -75,6 +76,7 @@ export function businessScopedRoutes(deps: Deps) {
     .route("/deposits", depositRoutes(deps))
     .route("/gift-cards", giftCardRoutes(deps))
     .route("/products", productRoutes(deps))
+    .route("/product-attributes", productAttributeRoutes(deps))
     .route("/stock-movements", stockRoutes(deps))
     .route("/images", imageRoutes(deps))
     .route("/api-keys", apiKeyRoutes(deps))

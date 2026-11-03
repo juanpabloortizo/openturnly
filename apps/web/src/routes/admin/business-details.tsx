@@ -7,12 +7,13 @@ import {
   PAGE_THEMES,
   type PageTheme,
 } from "@openturnly/core";
-import { ArrowUpRight, Check, ImagePlus, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowUpRight, Check, ChevronDown, ImagePlus, Trash2 } from "lucide-react";
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { BookingBackdrop } from "../../components/booking-backdrop.tsx";
 import { BookingHeader } from "../../components/booking-header.tsx";
+import { BookingQr } from "../../components/booking-qr.tsx";
 import { Combobox } from "../../components/combobox.tsx";
 import { useConfirm } from "../../components/confirm.tsx";
 import { PageHeader, PageTabs, SaveBar, SettingsCard } from "../../components/controls.tsx";
@@ -195,9 +196,8 @@ function PageTab({ business }: { business: Business }) {
             onPointerDownCapture={() => setPreview("page")}
             onFocusCapture={() => setPreview("page")}
           >
-            <LinkCard business={business} />
-            <ImagesCard business={business} />
-            <AppearanceCard
+            <ShareCard business={business} brandColor={brandColor} />
+            <BrandCard
               business={business}
               brandColor={brandColor}
               onBrandColor={setBrandColor}
@@ -397,10 +397,12 @@ function InfoCard({ form }: { form: GeneralForm }) {
   );
 }
 
-function LinkCard({ business }: { business: Business }) {
+/** The link to share and its QR code, first: sharing them is what the page is for. */
+function ShareCard({ business, brandColor }: { business: Business; brandColor: string }) {
   const { t } = useTranslation();
+  const images = useBusinessImages(business.id);
   return (
-    <SettingsCard title={t("settings.pageTitle")} description={t("settings.pageHint")}>
+    <SettingsCard title={t("settings.shareTitle")} description={t("settings.pageHint")}>
       <div className="flex flex-col gap-2 sm:flex-row">
         <div className="min-w-0 flex-1">
           <CopyField value={publicUrl(business.slug)} label={t("settings.pageTitle")} />
@@ -415,14 +417,45 @@ function LinkCard({ business }: { business: Business }) {
           <ArrowUpRight className="size-4" aria-hidden />
         </a>
       </div>
+      {/* Follows the colour being edited, like the preview. */}
+      <BookingQr
+        url={publicUrl(business.slug)}
+        color={brandColor}
+        logoUrl={images.list.data?.logoUrl ?? null}
+        name={business.name}
+        locale={business.locale}
+        fileName={`qr-${business.slug}`}
+      />
     </SettingsCard>
   );
 }
 
-function ImagesCard({ business }: { business: Business }) {
+function SubHeading({ label, hint }: { label: string; hint: string }) {
+  return (
+    <div>
+      <p className="text-sm font-medium text-zinc-800">{label}</p>
+      <p className="mt-0.5 text-[13px] text-zinc-500">{hint}</p>
+    </div>
+  );
+}
+
+/** Everything that makes the page look like the business: images, colour and background. */
+function BrandCard({
+  business,
+  brandColor,
+  onBrandColor,
+  pageTheme,
+  onPageTheme,
+}: {
+  business: Business;
+  brandColor: string;
+  onBrandColor: (color: string) => void;
+  pageTheme: PageTheme;
+  onPageTheme: (theme: PageTheme) => void;
+}) {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const { list, upload, remove } = useBusinessImages(business.id);
-  if (list.isPending) return <Spinner />;
   const busy = upload.isPending || remove.isPending;
   const uploadImage = (kind: "logo" | "cover") => (image: Blob) =>
     upload.mutate(
@@ -432,40 +465,185 @@ function ImagesCard({ business }: { business: Business }) {
         onError: (error) => toast.error(errorMessage(t, error)),
       },
     );
-  const removeImage = (kind: "logo" | "cover") => () =>
-    remove.mutate(kind, { onSuccess: () => toast.success(t("settings.imageRemoved")) });
+  const removeImage = (kind: "logo" | "cover") => async () => {
+    const ok = await confirm({
+      title: t(`settings.removeImageTitle.${kind}`),
+      description: t("settings.removeImageBody"),
+      confirmLabel: t("settings.removeImage"),
+      tone: "danger",
+    });
+    if (ok) remove.mutate(kind, { onSuccess: () => toast.success(t("settings.imageRemoved")) });
+  };
+  const coverUrl = list.data?.coverUrl ?? null;
 
   return (
-    <SettingsCard title={t("settings.imagesTitle")} description={t("settings.imagesHint")}>
-      <div className="grid gap-6 sm:grid-cols-[minmax(0,1fr)_10rem]">
-        <ImageField
-          kind="cover"
-          url={list.data?.coverUrl ?? null}
-          label={t("settings.cover")}
-          hint={t("settings.coverHint")}
-          busy={busy}
-          onUpload={uploadImage("cover")}
-          onRemove={removeImage("cover")}
-        />
-        <ImageField
-          kind="logo"
-          url={list.data?.logoUrl ?? null}
-          label={t("settings.logo")}
-          hint={t("settings.logoHint")}
-          busy={busy}
-          onUpload={uploadImage("logo")}
-          onRemove={removeImage("logo")}
-        />
+    <SettingsCard title={t("settings.brandTitle")} description={t("settings.brandHint")}>
+      <div className="space-y-3">
+        <SubHeading label={t("settings.imagesTitle")} hint={t("settings.imagesHint")} />
+        {list.isPending ? (
+          <Spinner />
+        ) : (
+          <div className="flex gap-3">
+            <ImageField
+              kind="logo"
+              url={list.data?.logoUrl ?? null}
+              label={t("settings.logo")}
+              busy={busy}
+              onUpload={uploadImage("logo")}
+              onRemove={removeImage("logo")}
+            />
+            <ImageField
+              kind="cover"
+              url={coverUrl}
+              label={t("settings.cover")}
+              busy={busy}
+              onUpload={uploadImage("cover")}
+              onRemove={removeImage("cover")}
+            />
+          </div>
+        )}
       </div>
+      <SettingRow
+        label={t("settings.brandColor")}
+        hint={t("settings.brandColorHint")}
+        value={
+          <>
+            <span
+              className="size-5 rounded-full ring-1 ring-zinc-950/10 ring-inset"
+              style={{ backgroundColor: brandColor }}
+            />
+            <span className="font-mono text-xs uppercase">{brandColor}</span>
+          </>
+        }
+      >
+        <ColorChoice
+          label={t("settings.brandColor")}
+          value={brandColor}
+          options={BRAND_COLORS}
+          onChange={onBrandColor}
+        />
+      </SettingRow>
+      <SettingRow
+        label={t("settings.pageBackground")}
+        hint={t("settings.pageBackgroundHint")}
+        value={
+          <>
+            <span className="w-12 overflow-hidden rounded-md ring-1 ring-zinc-200">
+              <ThemeThumb theme={pageTheme} brandColor={brandColor} coverUrl={coverUrl} />
+            </span>
+            {t(`settings.themes.${pageTheme}`)}
+          </>
+        }
+      >
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {PAGE_THEMES.map((theme) => (
+            <button
+              key={theme}
+              type="button"
+              aria-pressed={theme === pageTheme}
+              onClick={() => onPageTheme(theme)}
+              className="group text-left outline-none"
+            >
+              <span
+                className={cn(
+                  "block overflow-hidden rounded-xl ring-1 transition",
+                  theme === pageTheme
+                    ? "ring-2 ring-zinc-900 ring-offset-2"
+                    : "ring-zinc-200 group-hover:ring-zinc-300 group-focus-visible:ring-2 group-focus-visible:ring-brand-500",
+                )}
+              >
+                <ThemeThumb theme={theme} brandColor={brandColor} coverUrl={coverUrl} />
+              </span>
+              <span className="mt-1.5 block text-[13px] font-medium text-zinc-800">
+                {t(`settings.themes.${theme}`)}
+              </span>
+            </button>
+          ))}
+        </div>
+      </SettingRow>
     </SettingsCard>
   );
 }
 
+/**
+ * A setting shown as its current value, so the card stays short; its picker opens below when
+ * the row is clicked.
+ */
+function SettingRow({
+  label,
+  hint,
+  value,
+  children,
+}: {
+  label: string;
+  hint: string;
+  value: ReactNode;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const panel = useId();
+  return (
+    <div className="border-t border-zinc-100 pt-4">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panel}
+        onClick={() => setOpen(!open)}
+        className="group flex w-full items-center gap-4 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium text-zinc-800">{label}</span>
+          <span className="mt-0.5 block text-[13px] text-zinc-500">{hint}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2 text-[13px] text-zinc-600">{value}</span>
+        <ChevronDown
+          className={cn(
+            "size-4 shrink-0 text-zinc-400 transition-transform group-hover:text-zinc-600",
+            open && "rotate-180",
+          )}
+          aria-hidden
+        />
+      </button>
+      {open && (
+        <div id={panel} className="mt-4">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A page background in miniature, with a tiny booking card on it to judge the contrast. */
+function ThemeThumb({
+  theme,
+  brandColor,
+  coverUrl,
+}: {
+  theme: PageTheme;
+  brandColor: string;
+  coverUrl: string | null;
+}) {
+  return (
+    // The light page customers see, whatever the app's theme.
+    <span
+      className="light relative isolate flex aspect-[4/3] items-end justify-center overflow-hidden"
+      style={brandStyle(brandColor)}
+    >
+      <BookingBackdrop theme={theme} coverUrl={coverUrl} />
+      <span className="mb-[-6px] h-3/5 w-3/5 rounded-t-[12%] bg-white/95 p-[6%] shadow-md">
+        <span className="block h-[12%] w-1/2 rounded-full bg-zinc-200" />
+        <span className="mt-[6%] block h-[12%] w-3/4 rounded-full bg-zinc-100" />
+        <span className="mt-[12%] block h-[16%] w-1/3 rounded-full bg-brand-600" />
+      </span>
+    </span>
+  );
+}
+
+/** A thumbnail that uploads or replaces the image when clicked; the corner button removes it. */
 function ImageField({
   kind,
   url,
   label,
-  hint,
   busy,
   onUpload,
   onRemove,
@@ -473,7 +651,6 @@ function ImageField({
   kind: "logo" | "cover";
   url: string | null;
   label: string;
-  hint: string;
   busy: boolean;
   onUpload: (image: Blob) => void;
   onRemove: () => void;
@@ -491,45 +668,47 @@ function ImageField({
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <button
-        type="button"
-        onClick={() => input.current?.click()}
-        disabled={busy}
-        aria-label={url ? t("settings.replaceImage") : t("settings.uploadImage")}
-        className={cn(
-          "group relative grid place-items-center overflow-hidden border border-zinc-200 bg-zinc-50 text-zinc-400 transition-colors hover:border-zinc-300 hover:text-zinc-600",
-          kind === "logo" ? "aspect-square w-full rounded-xl" : "aspect-[3/1] w-full rounded-lg",
-          !url && "border-dashed",
-        )}
-      >
-        {url ? (
-          <img src={url} alt={label} className="size-full object-cover" />
-        ) : (
-          <ImagePlus className="size-6" aria-hidden />
-        )}
-      </button>
-      <div>
-        <p className="text-sm font-medium text-zinc-800">{label}</p>
-        <p className="mt-0.5 text-[13px] text-zinc-500">{hint}</p>
-      </div>
-      <div className="flex gap-2">
-        <Button variant="secondary" size="sm" loading={busy} onClick={() => input.current?.click()}>
-          {url ? t("settings.replaceImage") : t("settings.uploadImage")}
-        </Button>
+    <div className={cn("min-w-0", kind === "logo" ? "w-28 shrink-0" : "max-w-84 flex-1")}>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => input.current?.click()}
+          disabled={busy}
+          aria-label={`${label}: ${url ? t("settings.replaceImage") : t("settings.uploadImage")}`}
+          className={cn(
+            "group relative grid h-28 w-full place-items-center overflow-hidden rounded-xl border bg-zinc-50 text-zinc-400 transition-colors outline-none hover:border-zinc-300 hover:text-zinc-600 focus-visible:ring-2 focus-visible:ring-brand-500/40",
+            url ? "border-zinc-200" : "border-dashed border-zinc-300",
+          )}
+        >
+          {url ? (
+            <>
+              <img src={url} alt="" className="size-full object-cover" />
+              <span className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/50 text-xs font-medium text-[#fff] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                <ImagePlus className="size-4" aria-hidden />
+                {t("settings.replaceImage")}
+              </span>
+            </>
+          ) : (
+            <span className="flex flex-col items-center gap-1.5 text-xs font-medium">
+              <ImagePlus className="size-5" aria-hidden />
+              {t("settings.uploadImage")}
+            </span>
+          )}
+        </button>
         {url && (
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
+            type="button"
             onClick={onRemove}
             disabled={busy}
-            aria-label={t("settings.removeImage")}
+            aria-label={`${label}: ${t("settings.removeImage")}`}
             title={t("settings.removeImage")}
+            className="absolute top-1.5 right-1.5 grid size-7 place-items-center rounded-full bg-white text-zinc-500 shadow-sm ring-1 ring-zinc-950/10 transition-colors hover:text-red-600"
           >
-            <Trash2 className="size-4" aria-hidden />
-          </Button>
+            <Trash2 className="size-3.5" aria-hidden />
+          </button>
         )}
       </div>
+      <p className="mt-2 text-[13px] font-medium text-zinc-800">{label}</p>
       <input
         ref={input}
         type="file"
@@ -544,82 +723,15 @@ function ImageField({
   );
 }
 
-function AppearanceCard({
-  business,
-  brandColor,
-  onBrandColor,
-  pageTheme,
-  onPageTheme,
-}: {
-  business: Business;
-  brandColor: string;
-  onBrandColor: (color: string) => void;
-  pageTheme: PageTheme;
-  onPageTheme: (theme: PageTheme) => void;
-}) {
-  const { t } = useTranslation();
-  const images = useBusinessImages(business.id);
-  const coverUrl = images.list.data?.coverUrl ?? null;
-  return (
-    <SettingsCard title={t("settings.appearanceTitle")} description={t("settings.appearanceHint")}>
-      <ColorChoice
-        label={t("settings.brandColor")}
-        hint={t("settings.brandColorHint")}
-        value={brandColor}
-        options={BRAND_COLORS}
-        onChange={onBrandColor}
-      />
-      <div className="space-y-3 border-t border-zinc-100 pt-5">
-        <div>
-          <p className="text-sm font-medium text-zinc-800">{t("settings.pageBackground")}</p>
-          <p className="mt-0.5 text-[13px] text-zinc-500">{t("settings.pageBackgroundHint")}</p>
-        </div>
-        <div className="light grid grid-cols-2 gap-3 sm:grid-cols-5" style={brandStyle(brandColor)}>
-          {PAGE_THEMES.map((theme) => (
-            <button
-              key={theme}
-              type="button"
-              aria-pressed={theme === pageTheme}
-              onClick={() => onPageTheme(theme)}
-              className="group text-left outline-none"
-            >
-              <span
-                className={cn(
-                  "relative isolate flex aspect-[4/3] items-end justify-center overflow-hidden rounded-xl ring-1 transition",
-                  theme === pageTheme
-                    ? "ring-2 ring-zinc-900 ring-offset-2"
-                    : "ring-zinc-200 group-hover:ring-zinc-300 group-focus-visible:ring-2 group-focus-visible:ring-brand-500",
-                )}
-              >
-                <BookingBackdrop theme={theme} coverUrl={coverUrl} />
-                {/* A tiny booking card, to judge the contrast. */}
-                <span className="mb-[-6px] h-3/5 w-3/5 rounded-t-lg bg-white/95 p-1.5 shadow-md">
-                  <span className="block h-1.5 w-1/2 rounded-full bg-zinc-200" />
-                  <span className="mt-1 block h-1.5 w-3/4 rounded-full bg-zinc-100" />
-                  <span className="mt-2 block h-2 w-1/3 rounded-full bg-brand-600" />
-                </span>
-              </span>
-              <span className="mt-1.5 block text-[13px] font-medium text-zinc-800">
-                {t(`settings.themes.${theme}`)}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </SettingsCard>
-  );
-}
-
 /** Preset swatches plus a custom colour, picked visually or typed as hex. */
 function ColorChoice({
   label,
-  hint,
   value,
   options,
   onChange,
 }: {
+  /** For the hex field's name; the row above shows it. */
   label: string;
-  hint: string;
   value: string;
   options: readonly string[];
   onChange: (color: string) => void;
@@ -630,64 +742,58 @@ function ColorChoice({
   const custom = !options.includes(value);
 
   return (
-    <div className="space-y-3">
-      <div>
-        <p className="text-sm font-medium text-zinc-800">{label}</p>
-        <p className="mt-0.5 text-[13px] text-zinc-500">{hint}</p>
-      </div>
-      <div className="flex flex-wrap items-center gap-2.5">
-        {options.map((color) => (
-          <button
-            key={color}
-            type="button"
-            onClick={() => onChange(color)}
-            aria-pressed={color === value}
-            aria-label={color}
-            title={color}
-            className={cn(
-              "grid size-8 place-items-center rounded-full ring-1 ring-zinc-950/10 transition-transform ring-inset hover:scale-110",
-              color === value && "ring-2 ring-zinc-900 ring-offset-2",
-            )}
-            style={{ backgroundColor: color }}
-          >
-            {color === value && (
-              <Check
-                className="size-4"
-                style={{ color: isLight(color) ? "#18181b" : "#fff" }}
-                aria-hidden
-              />
-            )}
-          </button>
-        ))}
-        <label
+    <div className="flex flex-wrap items-center gap-2.5">
+      {options.map((color) => (
+        <button
+          key={color}
+          type="button"
+          onClick={() => onChange(color)}
+          aria-pressed={color === value}
+          aria-label={color}
+          title={color}
           className={cn(
-            "relative grid size-8 cursor-pointer place-items-center rounded-full bg-[conic-gradient(#ef4444,#eab308,#22c55e,#06b6d4,#6366f1,#d946ef,#ef4444)] ring-1 ring-zinc-950/10 transition-transform hover:scale-110",
-            custom && "ring-2 ring-zinc-900 ring-offset-2",
+            "grid size-8 place-items-center rounded-full ring-1 ring-zinc-950/10 transition-transform ring-inset hover:scale-110",
+            color === value && "ring-2 ring-zinc-900 ring-offset-2",
           )}
-          title={t("settings.customColor")}
+          style={{ backgroundColor: color }}
         >
-          <span className="sr-only">{t("settings.customColor")}</span>
-          <input
-            type="color"
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            className="absolute inset-0 cursor-pointer opacity-0"
-          />
-        </label>
-        <Input
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onBlur={() => {
-            const next = draft.trim().toLowerCase();
-            const hex = next.startsWith("#") ? next : `#${next}`;
-            if (/^#[0-9a-f]{6}$/.test(hex)) onChange(hex);
-            else setDraft(value);
-          }}
-          aria-label={`${label} (hex)`}
-          maxLength={7}
-          className="h-8 w-24 font-mono text-xs uppercase"
+          {color === value && (
+            <Check
+              className="size-4"
+              style={{ color: isLight(color) ? "#18181b" : "#fff" }}
+              aria-hidden
+            />
+          )}
+        </button>
+      ))}
+      <label
+        className={cn(
+          "relative grid size-8 cursor-pointer place-items-center rounded-full bg-[conic-gradient(#ef4444,#eab308,#22c55e,#06b6d4,#6366f1,#d946ef,#ef4444)] ring-1 ring-zinc-950/10 transition-transform hover:scale-110",
+          custom && "ring-2 ring-zinc-900 ring-offset-2",
+        )}
+        title={t("settings.customColor")}
+      >
+        <span className="sr-only">{t("settings.customColor")}</span>
+        <input
+          type="color"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="absolute inset-0 cursor-pointer opacity-0"
         />
-      </div>
+      </label>
+      <Input
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => {
+          const next = draft.trim().toLowerCase();
+          const hex = next.startsWith("#") ? next : `#${next}`;
+          if (/^#[0-9a-f]{6}$/.test(hex)) onChange(hex);
+          else setDraft(value);
+        }}
+        aria-label={`${label} (hex)`}
+        maxLength={7}
+        className="h-8 w-24 font-mono text-xs uppercase"
+      />
     </div>
   );
 }

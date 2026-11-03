@@ -93,20 +93,24 @@ updates, read the [self-hosting guide](docs/self-hosting.md), or follow the
 ## Features
 
 - **Booking page** per business with its logo, cover, brand colour and own questions, in
-  Spanish or English. Customers book without an account and get a booking code.
+  Spanish or English: services grouped by category with a search, professionals with their
+  photo, and a QR code with the logo to print. Customers book without an account and get a
+  booking code.
 - **Calendar** with day, week, month and list views, booking and moving appointments,
-  and Excel/CSV export.
+  no-shows, and Excel/CSV export.
 - **Sales and checkout**: charge appointments or sell at the counter, with discounts, tips
   per professional, split payments and deposits; void and export sales.
 - **Gift cards**: discount codes for the booking page and the counter, and gift cards with a
   balance to sell or give away.
-- **Inventory**: products and stock per location, alerts, stock in, counts, internal use,
-  transfers, and products sold at checkout.
+- **Inventory**: products with size, category, brand, VAT and commission, bulk upload from
+  Excel/CSV, stock per location with alarms, stock in, counts, internal use, transfers, and
+  products sold at checkout.
 - **Cash register** per location: where the money came from, expenses, cash in the register,
   transfers and corrections.
 - **Reports**: bookings, occupancy, new customers and sales against the previous period,
   tips and commissions per professional.
-- **Customers** with their history, notes and duplicate merging.
+- **Customers** with their history, notes, optional birth date, ID number and gender,
+  duplicate merging, and import/export with Excel or CSV.
 - **Locations**: one business, several branches, each with its own address, hours,
   services and team. Staff can work at several locations and are never booked at two at
   once.

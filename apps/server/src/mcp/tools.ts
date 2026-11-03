@@ -589,7 +589,11 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
       },
       async (args) => {
         const { appointment } = await appointmentByCode(args.code);
-        if (appointment.status === "cancelled") throw new ToolError("appointment_cancelled");
+        if (appointment.status !== "confirmed") {
+          throw new ToolError(
+            appointment.status === "no_show" ? "appointment_no_show" : "appointment_cancelled",
+          );
+        }
         await call("POST", `${base}/appointments/${appointment.id}/cancel`, {});
         return {
           cancelled: true,

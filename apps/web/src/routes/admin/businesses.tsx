@@ -5,7 +5,7 @@ import { EmptyState, PageHeader } from "../../components/controls.tsx";
 import { type Column, DataTable, IdentityCell } from "../../components/data-table.tsx";
 import { Alert, buttonClass, Spinner } from "../../components/ui.tsx";
 import type { Business } from "../../lib/api.ts";
-import { useBusinesses } from "../../lib/businesses.ts";
+import { businessPath, useBusinesses } from "../../lib/businesses.ts";
 import { errorMessage } from "../../lib/forms.ts";
 import { publicHost } from "../../lib/locale.ts";
 import { useAdminUser } from "./layout.tsx";
@@ -23,7 +23,7 @@ export function BusinessesPage() {
   // A client with a single business goes straight to it.
   const [only] = businesses.data;
   if (!isOwner && only && businesses.data.length === 1) {
-    return <Navigate to={`/admin/businesses/${only.id}`} replace />;
+    return <Navigate to={businessPath(only)} replace />;
   }
 
   const newButton = isOwner && (
@@ -100,7 +100,7 @@ export function BusinessesPage() {
           columns={columns}
           rows={businesses.data}
           rowKey={(business) => business.id}
-          onRowClick={(business) => navigate(`/admin/businesses/${business.id}`)}
+          onRowClick={(business) => navigate(businessPath(business))}
           searchPlaceholder={t("businesses.search")}
           matches={(business, query) =>
             business.name.toLowerCase().includes(query) || business.slug.includes(query)

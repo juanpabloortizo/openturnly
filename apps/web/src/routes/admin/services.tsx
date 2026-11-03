@@ -43,8 +43,14 @@ export function ServicesPage() {
       cell: (service) => (
         <div className="min-w-0 max-w-md">
           <div className="truncate font-medium text-zinc-900">{service.name}</div>
-          {service.description && (
-            <div className="truncate text-[13px] text-zinc-500">{service.description}</div>
+          {(service.category || service.description) && (
+            <div className="truncate text-[13px] text-zinc-500">
+              {service.category && (
+                <span className="font-medium text-zinc-600">{service.category}</span>
+              )}
+              {service.category && service.description && " · "}
+              {service.description}
+            </div>
           )}
         </div>
       ),
@@ -140,8 +146,17 @@ function ServiceForm({ service, onClose }: { service: Service | null; onClose: (
   const { business } = useBusinessContext();
   const { save, remove } = useServiceMutations(business.id);
   const locations = useLocations(business.id).data ?? [];
+  // The groups already in use, suggested so the same one is written the same way.
+  const categories = [
+    ...new Set(
+      (useServices(business.id).data ?? []).flatMap((item) =>
+        item.category ? [item.category] : [],
+      ),
+    ),
+  ].sort((a, b) => a.localeCompare(b, i18n.language));
   const confirm = useConfirm();
   const [name, setName] = useState(service?.name ?? "");
+  const [category, setCategory] = useState(service?.category ?? "");
   // New services are offered everywhere to begin with.
   const [locationIds, setLocationIds] = useState<string[]>(
     service?.locationIds ?? locations.map((location) => location.id),
@@ -161,6 +176,7 @@ function ServiceForm({ service, onClose }: { service: Service | null; onClose: (
     const amount = Number(price.replace(",", "."));
     const values = {
       name,
+      category,
       description,
       durationMin,
       // Empty or unreadable fails validation: every service shows its price.
@@ -242,6 +258,24 @@ function ServiceForm({ service, onClose }: { service: Service | null; onClose: (
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
+          )}
+        </Field>
+        <Field label={t("services.category")} optional hint={t("services.categoryHint")}>
+          {(props) => (
+            <>
+              <Input
+                {...props}
+                list="service-categories"
+                placeholder={t("services.categoryPlaceholder")}
+                value={category}
+                onChange={(event) => setCategory(event.target.value)}
+              />
+              <datalist id="service-categories">
+                {categories.map((item) => (
+                  <option key={item} value={item} />
+                ))}
+              </datalist>
+            </>
           )}
         </Field>
         <div className="grid grid-cols-2 gap-4">

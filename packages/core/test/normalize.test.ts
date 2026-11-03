@@ -52,7 +52,46 @@ describe("customer details", () => {
       phone: "+573001234567",
       firstName: "Ana María",
       lastName: "Pérez",
+      // Not asked by default.
+      birthDate: null,
+      document: null,
+      gender: null,
     });
+  });
+
+  it("ask for birth date, document and gender when the business wants them", () => {
+    const asking = bookingDetailsSchema({
+      ...DEFAULT_BOOKING_FORM,
+      birthDate: "required",
+      document: "optional",
+      gender: "required",
+    });
+    const person = { firstName: "Ana", lastName: "Pérez", phone: "+57 300 123 4567" };
+    const missing = asking.safeParse({ customer: person });
+    expect(missing.error?.issues.map((issue) => [issue.path.join("."), issue.message])).toEqual([
+      ["customer.birthDate", "required"],
+      ["customer.gender", "required"],
+    ]);
+    const wrong = asking.safeParse({
+      customer: { ...person, birthDate: "2999-01-01", gender: "robot" },
+    });
+    expect(wrong.error?.issues.map((issue) => issue.path.join("."))).toEqual([
+      "customer.birthDate",
+      "customer.gender",
+    ]);
+    const given = asking.parse({
+      customer: { ...person, birthDate: "1990-05-14", document: " 1.020.304 ", gender: "female" },
+    });
+    expect(given.customer).toMatchObject({
+      birthDate: "1990-05-14",
+      document: "1.020.304",
+      gender: "female",
+    });
+    // What the form doesn't ask is dropped, even if sent.
+    const notAsked = bookingDetailsSchema(DEFAULT_BOOKING_FORM).parse({
+      customer: { ...person, birthDate: "1990-05-14", gender: "male" },
+    });
+    expect(notAsked.customer).toMatchObject({ birthDate: null, gender: null });
   });
 
   it("follow the business's form", () => {

@@ -19,6 +19,10 @@
   --color-brand-900: #042f2e;
   /* Text on top of brand-600; a business with a light brand colour switches it to dark. */
   --color-on-brand: #fff;
+  /* Categories in charts, in this order (a validated colour-blind-safe set). */
+  --color-chart-1: #2a78d6;
+  --color-chart-2: #eb6834;
+  --color-chart-3: #1baf7a;
 }
 
 /*
@@ -30,6 +34,9 @@
   color-scheme: dark;
   --color-white: #161619;
   --color-on-brand: #06201d;
+  --color-chart-1: #3987e5;
+  --color-chart-2: #d95926;
+  --color-chart-3: #199e70;
   --color-zinc-50: #0e0e10;
   --color-zinc-100: #1f1f23;
   --color-zinc-200: #2a2a2f;

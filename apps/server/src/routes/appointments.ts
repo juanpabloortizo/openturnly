@@ -20,7 +20,7 @@ import {
   services,
 } from "../db/schema.ts";
 import type { BusinessAccess } from "../lib/access.ts";
-import { moveAppointment, staffRules } from "../lib/appointment-changes.ts";
+import { closedError, moveAppointment, staffRules } from "../lib/appointment-changes.ts";
 import { newBookingCode } from "../lib/codes.ts";
 import { matchCustomer, saveBookingCustomer } from "../lib/customers.ts";
 import { apiError, type BusinessEnv, type Deps, parseBody } from "../lib/http.ts";
@@ -50,12 +50,8 @@ const rescheduleSchema = z.object({
 
 /** The business calendar: appointments between two instants, with who booked them. */
 export function appointmentRoutes({ db, automations }: Deps) {
-  /** A confirmed appointment of the business; professionals only reach their own. */
-  const findAppointment = async (
-    businessId: string,
-    appointmentId: string,
-    access: BusinessAccess,
-  ) => {
+  /** An appointment of the business, whatever its status; professionals only reach their own. */
+  const findAny = async (businessId: string, appointmentId: string, access: BusinessAccess) => {
     const [appointment] = await db
       .select()
       .from(appointments)
@@ -64,7 +60,17 @@ export function appointmentRoutes({ db, automations }: Deps) {
     if (access.role === "professional" && appointment.resourceId !== access.resourceId) {
       throw apiError(404, "appointment_not_found");
     }
-    if (appointment.status !== "confirmed") throw apiError(409, "appointment_cancelled");
+    return appointment;
+  };
+
+  /** A confirmed appointment of the business; professionals only reach their own. */
+  const findAppointment = async (
+    businessId: string,
+    appointmentId: string,
+    access: BusinessAccess,
+  ) => {
+    const appointment = await findAny(businessId, appointmentId, access);
+    if (appointment.status !== "confirmed") throw closedError(appointment);
     return appointment;
   };
 
@@ -155,6 +161,7 @@ export function appointmentRoutes({ db, automations }: Deps) {
             cancelledAt: appointments.cancelledAt,
             customer: {
               id: customers.id,
+              shortId: customers.shortId,
               firstName: customers.firstName,
               lastName: customers.lastName,
               email: customers.email,
@@ -374,6 +381,77 @@ export function appointmentRoutes({ db, automations }: Deps) {
         );
         await automations.emit(appointment.id, "rescheduled", current.startsAt);
         return c.json({ appointment });
+      })
+
+      /**
+       * The customer didn't come. Only once the appointment has started and while it isn't
+       * charged; the time it had is free again.
+       */
+      .post("/:appointmentId/no-show", async (c) => {
+        const businessId = c.get("business").id;
+        const appointment = await findAppointment(
+          businessId,
+          c.req.param("appointmentId"),
+          c.get("access"),
+        );
+        if (appointment.startsAt.getTime() > Date.now()) {
+          throw apiError(409, "appointment_not_started");
+        }
+        if ((await chargedAppointments(db, [appointment.id])).size > 0) {
+          throw apiError(409, "appointment_paid");
+        }
+        const [marked] = await db
+          .update(appointments)
+          .set({ status: "no_show" })
+          .where(and(eq(appointments.id, appointment.id), eq(appointments.status, "confirmed")))
+          .returning({ id: appointments.id, status: appointments.status });
+        if (marked) await automations.emit(marked.id, "no_show");
+        return c.json({ appointment: marked ?? { id: appointment.id, status: "no_show" } });
+      })
+
+      /** Undoes a no-show: they did come after all, if nobody took the time meanwhile. */
+      .delete("/:appointmentId/no-show", async (c) => {
+        const businessId = c.get("business").id;
+        const appointment = await findAny(
+          businessId,
+          c.req.param("appointmentId"),
+          c.get("access"),
+        );
+        if (appointment.status === "confirmed") {
+          return c.json({ appointment: { id: appointment.id, status: appointment.status } });
+        }
+        if (appointment.status !== "no_show") throw closedError(appointment);
+        const restored = await db.transaction(async (tx) => {
+          await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${businessId}, 0))`);
+          const [clash] = await tx
+            .select({ id: appointments.id })
+            .from(appointments)
+            .where(
+              and(
+                eq(appointments.businessId, businessId),
+                eq(appointments.status, "confirmed"),
+                appointment.resourceId
+                  ? eq(appointments.resourceId, appointment.resourceId)
+                  : and(
+                      isNull(appointments.resourceId),
+                      appointment.locationId
+                        ? eq(appointments.locationId, appointment.locationId)
+                        : undefined,
+                    ),
+                lt(appointments.startsAt, appointment.endsAt),
+                gt(appointments.endsAt, appointment.startsAt),
+              ),
+            )
+            .limit(1);
+          if (clash) throw apiError(409, "slot_taken");
+          const [updated] = await tx
+            .update(appointments)
+            .set({ status: "confirmed" })
+            .where(and(eq(appointments.id, appointment.id), eq(appointments.status, "no_show")))
+            .returning({ id: appointments.id, status: appointments.status });
+          return updated;
+        });
+        return c.json({ appointment: restored ?? { id: appointment.id, status: "confirmed" } });
       })
 
       .post("/:appointmentId/cancel", async (c) => {

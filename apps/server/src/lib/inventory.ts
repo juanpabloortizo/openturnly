@@ -1,6 +1,6 @@
-import type { StockMovementKind } from "@openturnly/core";
+import { attributeKey, type ProductAttributeKind, type StockMovementKind } from "@openturnly/core";
 import { and, eq, sql } from "drizzle-orm";
-import { productStock, stockMovements } from "../db/schema.ts";
+import { productAttributes, productStock, stockMovements } from "../db/schema.ts";
 import type { Queryable } from "./schedules.ts";
 
 /** Waits for the business's other stock changes, so balances stay right. */
@@ -61,4 +61,60 @@ export async function moveStock(
     createdBy: move.createdBy ?? null,
   });
   return balanceAfter;
+}
+
+/** An entry of the business's category or brand list, by id, if it's that kind. */
+export async function findAttribute(
+  tx: Queryable,
+  businessId: string,
+  kind: ProductAttributeKind,
+  id: string,
+) {
+  const [attribute] = await tx
+    .select()
+    .from(productAttributes)
+    .where(
+      and(
+        eq(productAttributes.businessId, businessId),
+        eq(productAttributes.kind, kind),
+        eq(productAttributes.id, id),
+      ),
+    );
+  return attribute ?? null;
+}
+
+/** The entry that's the same as `input` (see core's attributeKey), if there's one. */
+export async function sameAttribute(
+  tx: Queryable,
+  businessId: string,
+  input: { kind: ProductAttributeKind; name: string },
+) {
+  const key = attributeKey(input.name);
+  const [attribute] = await tx
+    .select()
+    .from(productAttributes)
+    .where(
+      and(
+        eq(productAttributes.businessId, businessId),
+        eq(productAttributes.kind, input.kind),
+        eq(productAttributes.key, key),
+      ),
+    );
+  return { key, attribute: attribute ?? null };
+}
+
+/** The entry for `input`: the existing one that's the same, or a new one. */
+export async function findOrCreateAttribute(
+  tx: Queryable,
+  businessId: string,
+  input: { kind: ProductAttributeKind; name: string },
+) {
+  const { key, attribute } = await sameAttribute(tx, businessId, input);
+  if (attribute) return { attribute, created: false };
+  const [created] = await tx
+    .insert(productAttributes)
+    .values({ businessId, kind: input.kind, name: input.name, key })
+    .returning();
+  if (!created) throw new Error("attribute insert returned nothing");
+  return { attribute: created, created: true };
 }

@@ -14,6 +14,7 @@ import {
   CalendarX,
   type LucideIcon,
   MessageSquareHeart,
+  UserX,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "../../components/ui.tsx";
@@ -25,6 +26,7 @@ export const TRIGGERS: { value: AutomationTrigger; icon: LucideIcon }[] = [
   { value: "created", icon: CalendarPlus },
   { value: "rescheduled", icon: CalendarClock },
   { value: "cancelled", icon: CalendarX },
+  { value: "no_show", icon: UserX },
   { value: "before", icon: BellRing },
   { value: "after", icon: MessageSquareHeart },
 ];

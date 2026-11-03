@@ -6,7 +6,7 @@ All notable changes to OpenTurnly are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.2.0] - 2026-10-29
+## [1.2.0] - 2026-11-02
 
 A business can now run its front desk in OpenTurnly: several locations, charging and sales,
 gift cards, inventory, the cash register and reports. Existing installs update by pulling the
@@ -34,28 +34,68 @@ new image; migrations run on start and every business gets one location with wha
   are applied at the counter, and gift cards with a balance that the business sells (recorded
   as a sale) or gives away, then spends as a payment at checkout. Uses and balances follow
   the appointments and sales that used them: cancelling or voiding gives them back.
-- **Inventory**: products with category, brand, format, content and unit, sale price and
-  cost, a minimum stock and whether they're sold or only used. Stock is kept per location,
-  with alerts at the minimum and Excel/CSV export. Stock in, counts, internal use and
-  transfers between locations are recorded by hand; products sold at checkout leave stock
-  and come back if the sale is voided. Every movement is listed with what it left, by
-  period, location and type.
-- **Cash register**: per location and period, sales + deposits + internal sales + gift
-  cards + other income − expenses = the period's result, also split by payment method, with
-  the lines behind each figure and an Excel report. "Cash in the register" follows every
-  cash payment, deposit, income and expense; transfers take cash out (to the bank or another
-  location) and "Correct cash" records the difference after counting it. Sales charged from
-  the calendar land there on their own.
-- **Reports**: a summary per period and location (bookings, occupancy, new customers and
-  sales, each against the period before; where bookings came from; best sellers;
-  appointments per professional; today's appointments), **tips** per professional with
-  every tip and export, and **commissions**: each professional's percentage of the
-  services and products they sold (after each sale's discount) plus their tips, with the
-  total to pay. Commission percentages are set on each professional.
-- **Sidebar** grouped into "Sales and products" and "Administration".
+- **Inventory**: products with a size (an amount and a unit: ml, l, g, kg, oz or units),
+  category and brand from the business's own lists, SKU, sale price and cost, VAT, a
+  commission and whether they're sold or only used. Categories and brands are managed in
+  place, with a search, how many products use each, renaming, and a confirmation before
+  deleting. **Bulk upload** from Excel or CSV previews what will be created or updated, row
+  by row, and reads the usual column names (including "Formato"). Stock is kept per
+  location, with an alarm at the level you choose and a count in the sidebar. Stock in,
+  counts, internal use and transfers between locations are recorded by hand; products sold
+  at checkout leave stock and come back if the sale is voided. Every movement is listed with
+  what it left, by period, location and type, with Excel/CSV export.
+- **Cash register**: per location and period, what came in, what went out, the result and
+  the cash that should be in the drawer; where the money came from (sales, deposits,
+  internal sales, gift cards, other income, expenses) and how it was paid, with the lines
+  behind each figure. "Record movement" explains each option: income, expense, transfer
+  (cash taken out to the bank or another location) and balancing the drawer after counting
+  it. Sales charged from the calendar land there on their own. The report downloads as
+  Excel with a summary sheet and every line.
+- **Reports**: a summary per period and location with bookings, occupancy, new customers
+  and sales, each compared with the period before and explained behind an ⓘ; a chart of
+  bookings or sales by day, week or month; where bookings came from; best sellers;
+  appointments per professional; and today's appointments. **Tips** per professional with
+  every tip and export, and **commissions**: each professional's percentage of the services
+  and products they sold (after each sale's discount) plus their tips, with the total to pay.
+- **No-shows**: an appointment that already started can be marked "No-show" from the
+  calendar, which frees its time, and undone if the customer did come. It has its own
+  filter in the list, shows greyed out on the calendar and in the customer's history, and
+  workflows can start with it (`appointment.no_show`).
+- **QR code** for the booking page with the business's logo in the middle (its plain
+  background is removed), ready to download as an image with a line on top ("Book here")
+  and the business name below, both editable, on the brand colour or white.
+- **Service categories**: services can have a category; the booking page then groups them
+  under headings with chips to show one group, a search once the menu is long, and a
+  compact list.
+- **Professional photos**: an optional photo per professional, shown when customers choose
+  who to book with (their initials otherwise).
+- **Customer details**: optional birth date, ID number and gender on each customer, and the
+  booking form can ask for each one as required, optional or not at all. Customers can be
+  found by their ID number.
+- **Customer import and export**: bring customers from Excel or CSV, matching the file's
+  columns and previewing what will happen, and export them as Excel or CSV.
+- **Short links**: businesses and customers get short random ids in admin addresses
+  (`/admin/<id>`); old links keep working.
+- **Sidebar** grouped into "Sales" and "Administration".
 - **AI agents (MCP)**: `location_id` for finding times, booking, moving appointments, hours
-  and closures; `get_business_info` lists each location with its hours.
-- **Workflows**: `appointment.location` and `appointment.location_address` data.
+  and closures; `get_business_info` lists each location with its hours; the period summary
+  counts no-shows apart from cancellations.
+- **Workflows**: `appointment.location` and `appointment.location_address` data, and the
+  "A customer doesn't come" trigger.
+
+### Changed
+
+- **Settings → Booking page** is shorter: the link and the QR code together, then the
+  logo, cover, colour and background in one card, with the colour and background folded
+  until you open them.
+- On the booking page the customer chooses who first, then the day and its times side by
+  side.
+- Birth dates are chosen with day, month and year lists instead of the browser's calendar.
+
+### Fixed
+
+- The names of the page background styles were hard to read in dark mode.
+- Collapsing the sidebar no longer shows two lines between groups.
 
 ## [1.1.0] - 2026-10-22
 

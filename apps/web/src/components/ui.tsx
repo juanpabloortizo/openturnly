@@ -1,9 +1,11 @@
-import { Check, ChevronDown, Copy, LoaderCircle } from "lucide-react";
+import { Check, ChevronDown, Copy, Info, LoaderCircle } from "lucide-react";
 import {
   type ComponentProps,
   type ReactNode,
   type SelectHTMLAttributes,
+  useEffect,
   useId,
+  useRef,
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -236,5 +238,66 @@ export function CopyField({ value, label }: { value: string; label: string }) {
         {copied ? t("common.copied") : t("common.copy")}
       </Button>
     </div>
+  );
+}
+
+const TIP_WIDTH = 240;
+
+/**
+ * An ⓘ that explains what something means: on hover, on focus, or tapped on a phone. The
+ * bubble is placed on screen (fixed) so a card's edge or the window never cuts it.
+ */
+export function InfoTip({ text, label }: { text: string; label: string }) {
+  const button = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  const [place, setPlace] = useState<{ left: number; top: number } | null>(null);
+  const show = () => {
+    const box = button.current?.getBoundingClientRect();
+    if (!box) return;
+    const left = box.left + box.width / 2 - TIP_WIDTH / 2;
+    setPlace({
+      left: Math.min(Math.max(8, left), window.innerWidth - TIP_WIDTH - 8),
+      top: box.bottom + 6,
+    });
+  };
+  const hide = () => setPlace(null);
+
+  useEffect(() => {
+    if (!place) return;
+    // Fixed to the screen: scrolling would leave it behind, so it goes away.
+    const close = () => setPlace(null);
+    window.addEventListener("scroll", close, { capture: true, once: true });
+    return () => window.removeEventListener("scroll", close, { capture: true });
+  }, [place]);
+
+  return (
+    <>
+      <button
+        ref={button}
+        type="button"
+        aria-label={label}
+        aria-describedby={place ? id : undefined}
+        // A tap focuses it and clicks it: both open it, and tapping anywhere else closes it.
+        onPointerEnter={(event) => event.pointerType === "mouse" && show()}
+        onPointerLeave={(event) => event.pointerType === "mouse" && hide()}
+        onFocus={show}
+        onBlur={hide}
+        onClick={show}
+        onKeyDown={(event) => event.key === "Escape" && hide()}
+        className="inline-grid size-4 shrink-0 place-items-center rounded-full text-zinc-400 outline-none hover:text-zinc-600 focus-visible:ring-2 focus-visible:ring-brand-500/40"
+      >
+        <Info className="size-3.5" aria-hidden />
+      </button>
+      {place && (
+        <span
+          role="tooltip"
+          id={id}
+          style={{ left: place.left, top: place.top, width: TIP_WIDTH }}
+          className="pointer-events-none fixed z-50 rounded-lg bg-zinc-900 px-2.5 py-1.5 text-xs leading-snug font-normal text-white shadow-lg"
+        >
+          {text}
+        </span>
+      )}
+    </>
   );
 }

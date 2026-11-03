@@ -13,7 +13,7 @@ import { Modal, Switch } from "../../components/controls.tsx";
 import { MoneyInput } from "../../components/money-input.tsx";
 import { toast } from "../../components/toast.tsx";
 import { Button, Field, Input, Select, Textarea } from "../../components/ui.tsx";
-import type { Appointment, CustomerSummary, Sale } from "../../lib/api.ts";
+import type { Appointment, CustomerSummary, Product, Sale } from "../../lib/api.ts";
 import {
   useCustomerSearch,
   useLocations,
@@ -193,6 +193,23 @@ export function CheckoutModal({
       },
     ]);
   };
+  /** What a product costs here: its price for the team in an internal sale, if it has one. */
+  const priceOf = (product: Product, forTeam = internal) =>
+    forTeam && product.internalPriceAmount !== null
+      ? product.internalPriceAmount
+      : product.priceAmount;
+  /** Switching to or from an internal sale reprices the products still at their price. */
+  const switchInternal = (next: boolean) => {
+    setInternal(next);
+    setLines((current) =>
+      current.map((line) => {
+        const product = forSale.find((item) => item.id === line.productId);
+        return product && line.unitPrice === priceOf(product, !next)
+          ? { ...line, unitPrice: priceOf(product, next) }
+          : line;
+      }),
+    );
+  };
   const addProduct = () => {
     const product = forSale[0];
     if (!product) return;
@@ -205,7 +222,7 @@ export function CheckoutModal({
         serviceId: null,
         resourceId: appointment?.resourceId ?? null,
         quantity: 1,
-        unitPrice: product.priceAmount,
+        unitPrice: priceOf(product),
         discountAmount: 0,
       },
     ]);
@@ -424,7 +441,7 @@ export function CheckoutModal({
                             const product = forSale.find((item) => item.id === event.target.value);
                             editLine(line.key, {
                               productId: event.target.value,
-                              unitPrice: product?.priceAmount ?? line.unitPrice,
+                              unitPrice: product ? priceOf(product) : line.unitPrice,
                             });
                           }}
                         >
@@ -598,7 +615,7 @@ export function CheckoutModal({
           {!appointment && (
             <Switch
               checked={internal}
-              onChange={setInternal}
+              onChange={switchInternal}
               label={t("checkout.internal")}
               description={t("checkout.internalHint")}
             />

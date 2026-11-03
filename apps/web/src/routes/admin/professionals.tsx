@@ -1,8 +1,9 @@
 import { formatPrice, type ProfessionalInput, professionalSchema } from "@openturnly/core";
-import { Pencil, Plus, Users } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { Camera, Pencil, Plus, Users } from "lucide-react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
+import { Avatar } from "../../components/avatar.tsx";
 import { Checklist } from "../../components/checklist.tsx";
 import { useConfirm } from "../../components/confirm.tsx";
 import { EmptyState, Modal, PageHeader, Switch } from "../../components/controls.tsx";
@@ -21,6 +22,7 @@ import {
 } from "../../lib/catalog.ts";
 import { formatDuration } from "../../lib/format.ts";
 import { errorMessage, type FieldErrors, fieldMessage, validate } from "../../lib/forms.ts";
+import { prepareImage } from "../../lib/images.ts";
 import { useBusinessContext } from "./business.tsx";
 
 export function ProfessionalsPage() {
@@ -49,7 +51,12 @@ export function ProfessionalsPage() {
       key: "name",
       header: t("professionals.colProfessional"),
       cell: (professional) => (
-        <IdentityCell initial={professional.name} title={professional.name} />
+        <IdentityCell
+          initial={professional.name}
+          imageUrl={professional.photoUrl}
+          round
+          title={professional.name}
+        />
       ),
     },
     {
@@ -208,6 +215,8 @@ function ProfessionalForm({
       }),
     ),
   );
+  /** A new photo, null to remove theirs, or undefined to keep it as it is. */
+  const [photo, setPhoto] = useState<Blob | null | undefined>(undefined);
   const [errors, setErrors] = useState<FieldErrors>({});
   const workplaces = locations.filter((location) => locationIds.includes(location.id));
 
@@ -228,6 +237,7 @@ function ProfessionalForm({
       {
         id: professional?.id,
         input: result.data,
+        photo,
         hours: Object.fromEntries(
           workplaces.map((location) => [
             location.id,
@@ -290,11 +300,20 @@ function ProfessionalForm({
         {(save.isError || remove.isError) && (
           <Alert>{errorMessage(t, save.error ?? remove.error)}</Alert>
         )}
-        <Field label={t("fields.name")} error={fieldMessage(t, "name", errors.name)}>
-          {(props) => (
-            <Input {...props} value={name} onChange={(event) => setName(event.target.value)} />
-          )}
-        </Field>
+        <div className="flex items-start gap-4">
+          <PhotoField
+            name={name}
+            photo={photo === undefined ? (professional?.photoUrl ?? null) : photo}
+            onChange={setPhoto}
+          />
+          <div className="min-w-0 flex-1">
+            <Field label={t("fields.name")} error={fieldMessage(t, "name", errors.name)}>
+              {(props) => (
+                <Input {...props} value={name} onChange={(event) => setName(event.target.value)} />
+              )}
+            </Field>
+          </div>
+        </div>
 
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium text-zinc-800">
@@ -411,5 +430,86 @@ function ProfessionalForm({
         </div>
       </form>
     </Modal>
+  );
+}
+
+/**
+ * Their photo for the booking page, optional: a circle that opens the file picker, with
+ * their initials until there's one. Saved with the rest of the form.
+ */
+function PhotoField({
+  name,
+  photo,
+  onChange,
+}: {
+  name: string;
+  /** The saved photo's URL, or the one just picked. */
+  photo: string | Blob | null;
+  onChange: (photo: Blob | null) => void;
+}) {
+  const { t } = useTranslation();
+  const input = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!(photo instanceof Blob)) return setPreview(null);
+    const url = URL.createObjectURL(photo);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [photo]);
+  const url = photo instanceof Blob ? preview : photo;
+
+  const pick = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      // Square, like a logo.
+      onChange(await prepareImage(file, "logo"));
+    } catch {
+      toast.error(t("errors.image_invalid"));
+    }
+  };
+
+  return (
+    <div className="flex shrink-0 flex-col items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => input.current?.click()}
+        aria-label={url ? t("professionals.changePhoto") : t("professionals.addPhoto")}
+        title={t("professionals.photoHint")}
+        className="group relative rounded-full outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+      >
+        <Avatar name={name || "?"} url={url} className="size-16 text-lg" />
+        <span className="absolute inset-0 grid place-items-center rounded-full bg-black/40 text-[#fff] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+          <Camera className="size-5" aria-hidden />
+        </span>
+      </button>
+      {url ? (
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          className="text-xs text-zinc-500 hover:text-red-600"
+        >
+          {t("professionals.removePhoto")}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => input.current?.click()}
+          className="text-xs font-medium text-brand-700 hover:underline"
+        >
+          {t("professionals.addPhoto")}
+        </button>
+      )}
+      <input
+        ref={input}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={(event) => {
+          pick(event.target.files?.[0]);
+          event.target.value = "";
+        }}
+      />
+    </div>
   );
 }

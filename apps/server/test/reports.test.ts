@@ -21,7 +21,13 @@ describe("reports", () => {
       })
     ).body.professional;
     const wax = (
-      await owner.post(`${base}/products`, { name: "Cera", priceAmount: 20_000, initialStock: 5 })
+      await owner.post(`${base}/products`, {
+        name: "Cera",
+        priceAmount: 20_000,
+        initialStock: [
+          { locationId: (await owner.get(`${base}/locations`)).body.locations[0].id, quantity: 5 },
+        ],
+      })
     ).body.product;
     const today = todayIn("America/Bogota");
     // Next week, Monday to Sunday: Juan's default hours (Mon–Fri 9–18, Sat 9–13 = 49 h).
@@ -52,6 +58,10 @@ describe("reports", () => {
     const query = (from: string, to: string) => `from=${from}&to=${to}`;
     const todayReport = (await owner.get(`${base}/reports/summary?${query(today, today)}`)).body;
     expect(todayReport.current.billed).toBe(48_000);
+    expect(todayReport.series).toEqual({
+      unit: "day",
+      points: [{ start: today, bookings: 0, billed: 48_000 }],
+    });
     expect(todayReport.topServices.map((row: { name: string }) => row.name)).toEqual([
       "Corte",
       "Cera",
@@ -61,6 +71,25 @@ describe("reports", () => {
     expect(week.current.bookings).toBe(1);
     expect(week.current.occupancy).toBeCloseTo(1 / 49, 5);
     expect(week.origin).toEqual({ admin: 1 });
+    // The chart has every day of the week, the booking on Monday.
+    expect(week.series.unit).toBe("day");
+    expect(week.series.points.map((point: { bookings: number }) => point.bookings)).toEqual([
+      1, 0, 0, 0, 0, 0, 0,
+    ]);
+    // Longer periods are grouped by week (from Monday) and by month.
+    const quarter = (
+      await owner.get(`${base}/reports/summary?${query(period.from, addDays(period.from, 90))}`)
+    ).body;
+    expect(quarter.series.unit).toBe("week");
+    expect(quarter.series.points).toHaveLength(13);
+    expect(quarter.series.points[0]).toEqual({ start: period.from, bookings: 1, billed: 0 });
+    const year = (await owner.get(`${base}/reports/summary?${query("2026-01-15", "2026-12-31")}`))
+      .body;
+    expect(year.series.points.map((point: { start: string }) => point.start).slice(0, 3)).toEqual([
+      "2026-01-15",
+      "2026-02-01",
+      "2026-03-01",
+    ]);
 
     const tips = (await owner.get(`${base}/reports/tips?${query(today, today)}`)).body;
     expect(tips.totals).toEqual([{ name: "Juan", amount: 5_000, count: 1 }]);

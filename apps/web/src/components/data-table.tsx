@@ -239,12 +239,15 @@ function PhoneRows<T>({
 export function IdentityCell({
   initial,
   imageUrl,
+  round,
   title,
   subtitle,
 }: {
   initial: string;
   /** A picture (a business's logo) instead of the initial. */
   imageUrl?: string | null;
+  /** A circle, for people. */
+  round?: boolean;
   title: ReactNode;
   subtitle?: ReactNode;
 }) {
@@ -254,10 +257,18 @@ export function IdentityCell({
         <img
           src={imageUrl}
           alt=""
-          className="size-8 shrink-0 rounded-md bg-white object-cover ring-1 ring-zinc-200"
+          className={cn(
+            "size-8 shrink-0 bg-white object-cover ring-1 ring-zinc-200",
+            round ? "rounded-full" : "rounded-md",
+          )}
         />
       ) : (
-        <span className="grid size-8 shrink-0 place-items-center rounded-md bg-zinc-100 text-[13px] font-semibold text-zinc-700">
+        <span
+          className={cn(
+            "grid size-8 shrink-0 place-items-center bg-zinc-100 text-[13px] font-semibold text-zinc-700",
+            round ? "rounded-full" : "rounded-md",
+          )}
+        >
           {initial.charAt(0).toUpperCase()}
         </span>
       )}

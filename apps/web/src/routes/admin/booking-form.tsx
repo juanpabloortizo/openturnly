@@ -1,6 +1,8 @@
 import {
   type BookingForm,
   type BookingQuestion,
+  EXTRA_CUSTOMER_FIELDS,
+  type ExtraCustomerField,
   type FieldRule,
   MAX_QUESTIONS,
   type PageTheme,
@@ -31,8 +33,9 @@ function newQuestion(): BookingQuestion {
 }
 
 /**
- * What the booking page asks: which contact details are required, optional or left out,
- * and the business's own questions. Saved together with the rest of the booking page.
+ * What the booking page asks: which contact details (and birth date, document, gender) are
+ * required, optional or left out, and the business's own questions. Saved together with the
+ * rest of the booking page.
  */
 export function BookingFormCard({
   form,
@@ -57,8 +60,11 @@ export function BookingFormCard({
       ),
     }));
 
-  const contactRow = (field: "phone" | "email", label: string) => (
-    <div className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+  const fieldRow = (field: "phone" | "email" | ExtraCustomerField, label: string) => (
+    <div
+      key={field}
+      className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
+    >
       <span className="text-sm font-medium text-zinc-800">{label}</span>
       <fieldset className="inline-flex rounded-lg bg-zinc-100 p-0.5" aria-label={label}>
         {RULES.map((rule) => (
@@ -88,8 +94,9 @@ export function BookingFormCard({
           <span className="text-sm font-medium text-zinc-800">{t("bookingForm.name")}</span>
           <span className="text-[13px] text-zinc-500">{t("bookingForm.always")}</span>
         </div>
-        {contactRow("phone", t("booking.phone"))}
-        {contactRow("email", t("booking.email"))}
+        {fieldRow("phone", t("booking.phone"))}
+        {fieldRow("email", t("booking.email"))}
+        {EXTRA_CUSTOMER_FIELDS.map((field) => fieldRow(field, t(`booking.${field}`)))}
       </div>
       {errors.phone ? (
         <p className="-mt-2 text-[13px] text-red-600">{fieldMessage(t, "phone", errors.phone)}</p>
@@ -240,6 +247,14 @@ export function FormPreview({
             {field(page("booking.lastName"))}
             {form.phone !== "hidden" && field(page("booking.phone"), form.phone === "optional")}
             {form.email !== "hidden" && field(page("booking.email"), form.email === "optional")}
+            {EXTRA_CUSTOMER_FIELDS.map(
+              (extra) =>
+                form[extra] !== "hidden" && (
+                  <div key={extra}>
+                    {field(page(`booking.${extra}`), form[extra] === "optional")}
+                  </div>
+                ),
+            )}
           </div>
           {form.questions.map((question) => (
             <div key={question.id} className="space-y-1">

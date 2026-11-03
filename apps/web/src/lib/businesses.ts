@@ -26,6 +26,11 @@ const keys = {
   access: (id: string) => ["businesses", id, "access"] as const,
 };
 
+/** Where a business's admin pages live: /admin/<short id>. */
+export function businessPath(business: Pick<Business, "shortId">) {
+  return `/admin/${business.shortId}`;
+}
+
 export function useBusinesses() {
   return useQuery({
     queryKey: keys.all,
@@ -36,6 +41,7 @@ export function useBusinesses() {
 export function useBusiness(id: string) {
   return useQuery({
     queryKey: keys.one(id),
+    enabled: id !== "",
     queryFn: async () => (await api<{ business: Business }>(`/api/businesses/${id}`)).business,
   });
 }

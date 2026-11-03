@@ -1,8 +1,10 @@
-import { customerAdminSchema, customerPatchSchema } from "@openturnly/core";
+import { customerAdminSchema, customerImportSchema, customerPatchSchema } from "@openturnly/core";
 import { and, asc, desc, eq, ilike, ne, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { appointments, customers, deposits, sales } from "../db/schema.ts";
+import { newCustomerShortId } from "../lib/codes.ts";
+import { importCustomers } from "../lib/customer-import.ts";
 import { apiError, type BusinessEnv, type Deps, parseBody } from "../lib/http.ts";
 
 /**
@@ -63,16 +65,23 @@ export function customerRoutes({ db }: Deps) {
           ? or(
               sql`(${customers.firstName} || ' ' || ${customers.lastName}) ilike ${pattern}`,
               ilike(customers.email, pattern),
+              ilike(customers.document, pattern),
               digits.length >= 3 ? ilike(customers.phone, `%${digits}%`) : undefined,
             )
           : undefined;
         const rows = await db
           .select({
             id: customers.id,
+            shortId: customers.shortId,
             firstName: customers.firstName,
             lastName: customers.lastName,
             email: customers.email,
             phone: customers.phone,
+            birthDate: customers.birthDate,
+            document: customers.document,
+            gender: customers.gender,
+            // Private notes are for the business's admins, for exports.
+            notes: c.get("access").role === "professional" ? sql<null>`null` : customers.notes,
             createdAt: customers.createdAt,
             visits: sql<number>`count(${appointments.id}) filter (where ${confirmed})`.mapWith(
               Number,
@@ -122,9 +131,30 @@ export function customerRoutes({ db }: Deps) {
         await assertContactFree(businessId, input);
         const [customer] = await db
           .insert(customers)
-          .values({ ...input, businessId })
+          .values({ ...input, businessId, shortId: await newCustomerShortId(db, businessId) })
           .returning();
         return c.json({ customer }, 201);
+      })
+
+      /**
+       * Customers from a spreadsheet: a preview of what would be created or updated, or
+       * (with `apply`) the import itself. Results come back row by row.
+       */
+      .post("/import", async (c) => {
+        const input = await parseBody(c, customerImportSchema);
+        const results = await importCustomers(db, c.get("business"), input);
+        const count = (status: string) => results.filter((row) => row.status === status).length;
+        return c.json({
+          applied: input.apply,
+          counts: {
+            created: count("created"),
+            updated: count("updated"),
+            unchanged: count("unchanged"),
+            skipped: count("skipped"),
+            errors: count("error"),
+          },
+          results: results.filter((row) => row.status === "error" || row.warning),
+        });
       })
 
       .patch("/:customerId", async (c) => {

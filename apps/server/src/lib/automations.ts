@@ -321,16 +321,22 @@ export function createAutomations({ db, config }: { db: Db; config: Config }) {
     // The step was removed from the flow after this was queued.
     if (!step) return skip("step_removed");
     const { action } = step;
-    // Cancelled while it waited: no reminder or late "you're booked" for an appointment
-    // that's off. Notices sent right away still go out: what they report did happen.
+    // Cancelled (or a no-show) while it waited: no reminder, late "you're booked" or review
+    // request for an appointment that didn't happen. Notices sent right away still go out:
+    // what they report did happen. A flow about that very change still runs.
     const waited =
       automation.trigger === "before" || automation.trigger === "after" || step.delayMs > 0;
-    if (delivery.appointmentId && waited && delivery.event !== AUTOMATION_EVENTS.cancelled) {
+    if (delivery.appointmentId && waited) {
       const [appointment] = await db
         .select({ status: appointments.status })
         .from(appointments)
         .where(eq(appointments.id, delivery.appointmentId));
-      if (appointment?.status === "cancelled") return skip("appointment_cancelled");
+      if (appointment?.status === "cancelled" && delivery.event !== AUTOMATION_EVENTS.cancelled) {
+        return skip("appointment_cancelled");
+      }
+      if (appointment?.status === "no_show" && delivery.event !== AUTOMATION_EVENTS.no_show) {
+        return skip("appointment_no_show");
+      }
     }
     const result = await post(
       automation.secret,
@@ -365,7 +371,7 @@ export function createAutomations({ db, config }: { db: Db; config: Config }) {
      */
     async emit(
       appointmentId: string,
-      trigger: "created" | "rescheduled" | "cancelled",
+      trigger: "created" | "rescheduled" | "cancelled" | "no_show",
       previousStartsAt?: Date,
     ) {
       try {

@@ -13,16 +13,18 @@ import {
 import {
   ArrowLeftRight,
   Banknote,
+  ChevronDown,
   Download,
-  Minus,
   Plus,
   Scale,
   Trash2,
   TrendingDown,
   TrendingUp,
+  Wallet,
 } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useClickOutside, useMenuPlacement } from "../../components/combobox.tsx";
 import { useConfirm } from "../../components/confirm.tsx";
 import { Modal, PageHeader, PageTabs } from "../../components/controls.tsx";
 import { type Column, DataTable } from "../../components/data-table.tsx";
@@ -37,7 +39,7 @@ import { Alert, Button, Card, Field, Input, Select, Spinner } from "../../compon
 import { type CashReport, useCashMutations, useCashReport } from "../../lib/cash.ts";
 import { useLocations } from "../../lib/catalog.ts";
 import { cn } from "../../lib/cn.ts";
-import { type Cell, downloadXlsx } from "../../lib/export.ts";
+import { type Cell, downloadWorkbook } from "../../lib/export.ts";
 import { errorMessage, validate } from "../../lib/forms.ts";
 import { useBusinessContext } from "./business.tsx";
 
@@ -80,28 +82,18 @@ export function CashPage() {
   const data = report.data;
   const locationName = locations.find((location) => location.id === locationId)?.name;
 
-  const steps: { key: Flow; label: string; value: number; sign?: "+" | "−" | "=" }[] = data
+  const sources: { key: Flow; label: string; value: number }[] = data
     ? [
         { key: "sales", label: t("cash.flows.sales"), value: data.flows.sales },
-        { key: "deposits", label: t("cash.flows.deposits"), value: data.flows.deposits, sign: "+" },
-        { key: "internal", label: t("cash.flows.internal"), value: data.flows.internal, sign: "+" },
-        {
-          key: "giftCards",
-          label: t("cash.flows.giftCards"),
-          value: data.flows.giftCards,
-          sign: "+",
-        },
-        {
-          key: "income",
-          label: t("cash.flows.otherIncome"),
-          value: data.flows.otherIncome,
-          sign: "+",
-        },
-        { key: "expense", label: t("cash.flows.expenses"), value: data.flows.expenses, sign: "−" },
+        { key: "deposits", label: t("cash.flows.deposits"), value: data.flows.deposits },
+        { key: "internal", label: t("cash.flows.internal"), value: data.flows.internal },
+        { key: "giftCards", label: t("cash.flows.giftCards"), value: data.flows.giftCards },
+        { key: "income", label: t("cash.flows.otherIncome"), value: data.flows.otherIncome },
       ]
     : [];
+  const cameIn = sources.reduce((total, source) => total + source.value, 0);
 
-  /** Every line of the period on one sheet, with the flow it belongs to. */
+  /** A summary sheet with the figures on screen, then every line of the period. */
   const exportReport = () => {
     if (!data) return;
     const units = (amount: number) => fromMinorUnits(amount, business.currency);
@@ -109,7 +101,29 @@ export function CashPage() {
       const { date, time } = instantToZoned(Date.parse(iso), tz);
       return [date, time];
     };
-    const rows: Cell[][] = [
+    const amountHeader = `${t("checkout.amount")} (${business.currency})`;
+    const summary: Cell[][] = [];
+    const bold: number[] = [];
+    const add = (row: Cell[], strong = false) => {
+      if (strong) bold.push(summary.length);
+      summary.push(row);
+    };
+    add([`${t("cash.title")} · ${business.name}`], true);
+    add([t("locations.pick"), locationName ?? t("locations.all")]);
+    add([t("cash.period"), `${period.start} – ${period.end}`]);
+    add([]);
+    add([t("cash.sourcesTitle"), amountHeader], true);
+    for (const source of sources) add([source.label, units(source.value)]);
+    add([t("cash.summary.in"), units(cameIn)], true);
+    add([t("cash.flows.expenses"), units(-data.flows.expenses)]);
+    add([t("cash.flows.result"), units(data.flows.result)], true);
+    add([]);
+    add([t("cash.methodsTitle"), amountHeader], true);
+    for (const method of PAYMENT_METHODS)
+      add([t(`payments.${method}`), units(data.byMethod[method])]);
+    add([]);
+    add([t("cash.summary.drawerToday"), units(data.cashInDrawer)], true);
+    const detail: Cell[][] = [
       [
         t("cash.colFlow"),
         t("sales.colDate"),
@@ -117,7 +131,7 @@ export function CashPage() {
         t("locations.pick"),
         t("cash.colDetail"),
         t("checkout.method"),
-        `${t("checkout.amount")} (${business.currency})`,
+        amountHeader,
       ],
       ...data.sales.map((sale): Cell[] => [
         t(`cash.flows.${sale.flow}`),
@@ -144,10 +158,12 @@ export function CashPage() {
         units(move.kind === "expense" || move.kind === "transfer_out" ? -move.amount : move.amount),
       ]),
     ];
-    downloadXlsx(
+    downloadWorkbook(
       `${t("cash.exportFile")}-${business.slug}-${period.start}-${period.end}.xlsx`,
-      t("cash.title"),
-      rows,
+      [
+        { name: t("cash.summarySheet"), rows: summary, table: false, bold },
+        { name: t("cash.detailSheet"), rows: detail },
+      ],
     );
   };
 
@@ -156,101 +172,54 @@ export function CashPage() {
       <PageHeader
         title={t("cash.title")}
         subtitle={t("cash.subtitle")}
-        actions={
-          <>
-            <Button onClick={() => setCreating("income")}>
-              <TrendingUp className="size-4" aria-hidden />
-              {t("cash.new.income")}
-            </Button>
-            <Button variant="secondary" onClick={() => setCreating("expense")}>
-              <TrendingDown className="size-4" aria-hidden />
-              {t("cash.new.expense")}
-            </Button>
-            <Button variant="secondary" onClick={() => setCreating("transfer")}>
-              <ArrowLeftRight className="size-4" aria-hidden />
-              {t("cash.new.transfer")}
-            </Button>
-            <Button variant="secondary" onClick={() => setCreating("adjustment")}>
-              <Scale className="size-4" aria-hidden />
-              {t("cash.new.adjustment")}
-            </Button>
-          </>
-        }
+        actions={<RecordMenu onPick={setCreating} />}
       />
-      <p className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2.5 text-[13px] text-sky-800">
-        {t("cash.hint")}
-      </p>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <Card className="flex flex-wrap items-end gap-3 p-4">
-          {locations.length > 1 && (
-            <Field label={t("locations.pick")} className="w-56">
-              {(props) => (
-                <Select
-                  {...props}
-                  value={locationId}
-                  onChange={(event) => setPicked(event.target.value)}
-                >
-                  {locations.map((location) => (
-                    <option key={location.id} value={location.id}>
-                      {location.name}
-                    </option>
-                  ))}
-                  <option value="">{t("locations.all")}</option>
-                </Select>
-              )}
-            </Field>
-          )}
-          <div className="space-y-1.5">
-            <span className="block text-sm font-medium text-zinc-800">{t("cash.period")}</span>
-            <DateRangePicker
-              value={period}
-              onChange={setPeriod}
-              today={todayIn(tz)}
-              locale={language}
-              labels={{
-                today: t("agenda.periods.today"),
-                week: t("agenda.periods.week"),
-                month: t("agenda.periods.month"),
-                lastMonth: t("agenda.periods.lastMonth"),
-                next30: t("agenda.periods.next30"),
-                last30: t("agenda.periods.last30"),
-                year: t("agenda.periods.year"),
-                custom: t("agenda.periods.custom"),
-                previous: t("agenda.previous"),
-                next: t("agenda.next"),
-              }}
-            />
-          </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="ml-auto"
-            disabled={!data}
-            onClick={exportReport}
-          >
-            <Download className="size-3.5" aria-hidden />
-            {t("cash.export")}
-          </Button>
-        </Card>
-        <Card className="flex items-center gap-4 p-4">
-          <span className="grid size-12 shrink-0 place-items-center rounded-full bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200">
-            <Banknote className="size-6" aria-hidden />
-          </span>
-          <div className="min-w-0">
-            <div className="text-sm text-zinc-500">
-              {t("cash.inDrawer")}
-              {locationName ? ` · ${locationName}` : ""}
-            </div>
-            <div className="text-2xl font-semibold text-zinc-900 tabular-nums">
-              {data ? money(data.cashInDrawer) : "—"}
-            </div>
-          </div>
-        </Card>
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        {locations.length > 1 && (
+          <Field label={t("locations.pick")} className="w-56">
+            {(props) => (
+              <Select
+                {...props}
+                value={locationId}
+                onChange={(event) => setPicked(event.target.value)}
+              >
+                {locations.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+                <option value="">{t("locations.all")}</option>
+              </Select>
+            )}
+          </Field>
+        )}
+        <DateRangePicker
+          value={period}
+          onChange={setPeriod}
+          today={todayIn(tz)}
+          locale={language}
+          labels={{
+            today: t("agenda.periods.today"),
+            week: t("agenda.periods.week"),
+            month: t("agenda.periods.month"),
+            lastMonth: t("agenda.periods.lastMonth"),
+            next30: t("agenda.periods.next30"),
+            last30: t("agenda.periods.last30"),
+            year: t("agenda.periods.year"),
+            custom: t("agenda.periods.custom"),
+            previous: t("agenda.previous"),
+            next: t("agenda.next"),
+          }}
+        />
+        <Button variant="secondary" className="ml-auto" disabled={!data} onClick={exportReport}>
+          <Download className="size-4" aria-hidden />
+          {t("cash.export")}
+        </Button>
       </div>
 
       {report.isError && (
-        <div className="mt-4">
+        <div className="mb-4">
           <Alert>{errorMessage(t, report.error)}</Alert>
         </div>
       )}
@@ -258,56 +227,93 @@ export function CashPage() {
         <Spinner />
       ) : (
         <>
-          <Card className="mt-4 overflow-x-auto p-4">
-            <div className="flex min-w-[52rem] items-stretch gap-2">
-              {steps.map((step) => (
-                <div key={step.key} className="flex flex-1 items-center gap-2">
-                  {step.sign && (
-                    <span className="grid size-6 place-items-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-500">
-                      {step.sign === "−" ? (
-                        <Minus className="size-3" />
-                      ) : (
-                        <Plus className="size-3" />
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Stat
+              icon={TrendingUp}
+              tone="in"
+              label={t("cash.summary.in")}
+              value={money(cameIn)}
+              hint={t("cash.summary.inHint")}
+            />
+            <Stat
+              icon={TrendingDown}
+              tone="out"
+              label={t("cash.summary.out")}
+              value={money(data.flows.expenses)}
+              hint={t("cash.summary.outHint")}
+            />
+            <Stat
+              icon={Wallet}
+              tone="result"
+              label={t("cash.flows.result")}
+              value={money(data.flows.result)}
+              hint={t("cash.summary.resultHint")}
+            />
+            <Stat
+              icon={Banknote}
+              tone="drawer"
+              label={t("cash.inDrawer")}
+              value={money(data.cashInDrawer)}
+              hint={
+                locationName
+                  ? t("cash.summary.drawerHintAt", { location: locationName })
+                  : t("cash.summary.drawerHint")
+              }
+            />
+          </div>
+
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            <Card className="p-4">
+              <h2 className="text-sm font-semibold text-zinc-900">{t("cash.sourcesTitle")}</h2>
+              <p className="mt-0.5 text-[13px] text-zinc-500">{t("cash.sourcesHint")}</p>
+              <ul className="mt-3">
+                {[
+                  ...sources,
+                  {
+                    key: "expense" as const,
+                    label: t("cash.flows.expenses"),
+                    value: -data.flows.expenses,
+                  },
+                ].map((source) => (
+                  <li key={source.key}>
+                    <button
+                      type="button"
+                      onClick={() => setFlow(source.key)}
+                      aria-pressed={flow === source.key}
+                      className={cn(
+                        "flex w-full items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
+                        flow === source.key ? "bg-brand-50 text-brand-800" : "hover:bg-zinc-50",
                       )}
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setFlow(step.key)}
-                    className={cn(
-                      "min-w-0 flex-1 rounded-lg border px-3 py-2.5 text-left transition-colors",
-                      flow === step.key
-                        ? "border-brand-400 bg-brand-50/50"
-                        : "border-zinc-200 hover:border-zinc-300",
-                    )}
+                    >
+                      <span className={flow === source.key ? "font-medium" : "text-zinc-600"}>
+                        {source.label}
+                      </span>
+                      <Amount value={source.value} money={money} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+            <Card className="flex flex-col p-4">
+              <h2 className="text-sm font-semibold text-zinc-900">{t("cash.methodsTitle")}</h2>
+              <p className="mt-0.5 text-[13px] text-zinc-500">{t("cash.methodsHint")}</p>
+              <ul className="mt-3">
+                {PAYMENT_METHODS.map((method) => (
+                  <li
+                    key={method}
+                    className="flex items-center justify-between gap-3 px-2.5 py-1.5 text-sm"
                   >
-                    <div className="text-[12px] text-zinc-500">{step.label}</div>
-                    <div className="mt-0.5 font-semibold text-zinc-900 tabular-nums">
-                      {money(step.value)}
-                    </div>
-                  </button>
-                </div>
-              ))}
-              <span className="grid size-6 place-items-center self-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-500">
-                =
-              </span>
-              <div className="flex-1 rounded-lg bg-zinc-900 px-3 py-2.5 text-white">
-                <div className="text-[12px] text-zinc-300">{t("cash.flows.result")}</div>
-                <div className="mt-0.5 font-semibold tabular-nums">{money(data.flows.result)}</div>
+                    <span className="text-zinc-600">{t(`payments.${method}`)}</span>
+                    <Amount value={data.byMethod[method]} money={money} />
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-auto flex items-center justify-between gap-3 border-t border-zinc-100 px-2.5 pt-2.5 text-sm font-semibold text-zinc-900">
+                {t("cash.methodsTotal")}
+                <span className="tabular-nums">{money(data.flows.result)}</span>
               </div>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 border-t border-zinc-100 pt-3 text-[13px]">
-              <span className="text-zinc-500">{t("cash.byMethod")}</span>
-              {PAYMENT_METHODS.map((method) => (
-                <span key={method} className="text-zinc-600">
-                  {t(`payments.${method}`)}{" "}
-                  <span className="font-medium text-zinc-900 tabular-nums">
-                    {money(data.byMethod[method])}
-                  </span>
-                </span>
-              ))}
-            </div>
-          </Card>
+            </Card>
+          </div>
 
           <div className="mt-6">
             <PageTabs
@@ -341,6 +347,113 @@ export function CashPage() {
         />
       )}
     </>
+  );
+}
+
+const STAT_TONES = {
+  in: "bg-emerald-50 text-emerald-600 ring-emerald-200",
+  out: "bg-red-50 text-red-600 ring-red-200",
+  result: "bg-zinc-100 text-zinc-700 ring-zinc-200",
+  drawer: "bg-brand-50 text-brand-600 ring-brand-200",
+};
+
+/** One figure of the period, all the same size so they read as one row. */
+function Stat({
+  icon: Icon,
+  tone,
+  label,
+  value,
+  hint,
+}: {
+  icon: typeof Banknote;
+  tone: keyof typeof STAT_TONES;
+  label: string;
+  value: string;
+  hint: string;
+}) {
+  return (
+    <Card className="flex flex-col p-4">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[13px] font-medium text-zinc-500">{label}</span>
+        <span className={cn("grid size-8 place-items-center rounded-lg ring-1", STAT_TONES[tone])}>
+          <Icon className="size-4" aria-hidden />
+        </span>
+      </div>
+      <div className="mt-1 text-2xl font-semibold tracking-tight text-zinc-900 tabular-nums">
+        {value}
+      </div>
+      <p className="mt-1 text-xs text-zinc-500">{hint}</p>
+    </Card>
+  );
+}
+
+/** Zero greyed out and money going out in red, so the figures that matter stand out. */
+function Amount({ value, money }: { value: number; money: (amount: number) => string }) {
+  return (
+    <span
+      className={cn(
+        "font-medium tabular-nums",
+        value === 0 ? "text-zinc-400" : value < 0 ? "text-red-600" : "text-zinc-900",
+      )}
+    >
+      {value < 0 ? `− ${money(-value)}` : money(value)}
+    </span>
+  );
+}
+
+const RECORDS = [
+  { kind: "income", icon: TrendingUp },
+  { kind: "expense", icon: TrendingDown },
+  { kind: "transfer", icon: ArrowLeftRight },
+  { kind: "adjustment", icon: Scale },
+] as const;
+
+/** The four things registered by hand, each with what it's for. */
+function RecordMenu({ onPick }: { onPick: (kind: NewMovement) => void }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const wrapper = useRef<HTMLDivElement>(null);
+  const placement = useMenuPlacement(open, wrapper, 340, "right");
+  useClickOutside(open, [wrapper], () => setOpen(false));
+  return (
+    <div ref={wrapper} className="relative">
+      <Button aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((value) => !value)}>
+        <Plus className="size-4" aria-hidden />
+        {t("cash.record")}
+        <ChevronDown className="size-4 opacity-70" aria-hidden />
+      </Button>
+      {open && (
+        <div
+          role="menu"
+          style={placement}
+          className="absolute top-full right-0 z-30 mt-1 w-[340px] max-w-[calc(100vw-1rem)] rounded-xl bg-white p-1 shadow-lg ring-1 ring-zinc-200"
+        >
+          {RECORDS.map(({ kind, icon: Icon }) => (
+            <button
+              key={kind}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onPick(kind);
+              }}
+              className="flex w-full gap-3 rounded-lg px-3 py-2 text-left hover:bg-zinc-100"
+            >
+              <Icon className="mt-0.5 size-4 shrink-0 text-zinc-400" aria-hidden />
+              <span>
+                <span className="block text-sm font-medium text-zinc-900">
+                  {t(`cash.new.${kind}`)}
+                </span>
+                <span className="block text-[13px] text-zinc-500">{t(`cash.newHint.${kind}`)}</span>
+              </span>
+            </button>
+          ))}
+          <p className="mt-1 border-t border-zinc-100 px-3 pt-2 pb-1.5 text-xs text-zinc-500">
+            {t("cash.recordNote")}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 

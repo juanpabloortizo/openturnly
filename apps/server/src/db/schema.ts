@@ -6,10 +6,13 @@ import {
   type BookingForm,
   BUSINESS_ROLES,
   CASH_MOVEMENT_KINDS,
+  COMMISSION_TYPES,
   DEFAULT_BOOKING_FORM,
+  GENDERS,
   GIFT_CARD_KINDS,
   PAGE_THEMES,
   PAYMENT_METHODS,
+  PRODUCT_ATTRIBUTE_KINDS,
   PRODUCT_UNITS,
   SALE_ITEM_KINDS,
   SALE_PAYMENT_METHODS,
@@ -140,6 +143,8 @@ export const userTours = pgTable(
 
 export const businesses = pgTable("businesses", {
   id: id(),
+  /** What admin URLs use instead of the id (/admin/<shortId>); see core's short-id. */
+  shortId: text("short_id").notNull().unique(),
   /** Public booking page lives at /<slug>. */
   slug: text("slug").notNull().unique(),
   name: text("name").notNull(),
@@ -288,6 +293,8 @@ export const services = pgTable(
       .references(() => businesses.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description"),
+    /** Groups the booking page's menu ("Cortes", "Barba"…); null: no group. */
+    category: text("category"),
     durationMin: integer("duration_min").notNull(),
     /** Minor currency units. Null: price shown as "ask at the business". */
     priceAmount: bigint("price_amount", { mode: "number" }),
@@ -321,6 +328,19 @@ export const resources = pgTable(
   },
   (table) => [index("resources_business_id_idx").on(table.businessId)],
 );
+
+/**
+ * A professional's photo for the booking page, square and shrunk by the browser. Optional:
+ * without one, their initials show.
+ */
+export const resourcePhotos = pgTable("resource_photos", {
+  resourceId: text("resource_id")
+    .primaryKey()
+    .references(() => resources.id, { onDelete: "cascade" }),
+  contentType: text("content_type").notNull(),
+  data: bytea("data").notNull(),
+  updatedAt: updatedAt(),
+});
 
 /** Which services each professional offers. */
 export const resourceServices = pgTable(
@@ -450,11 +470,18 @@ export const customers = pgTable(
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade" }),
+    /** What admin URLs use instead of the id (?customer=<shortId>), unique per business. */
+    shortId: text("short_id").notNull(),
     /** Either may be missing, depending on the booking form; never both. */
     email: text("email"),
     phone: text("phone"),
     firstName: text("first_name").notNull(),
     lastName: text("last_name").notNull(),
+    /** Optional details, asked by the booking form if the business wants them. */
+    birthDate: date("birth_date", { mode: "string" }),
+    /** An ID number as they write it. */
+    document: text("document"),
+    gender: text("gender", { enum: GENDERS }),
     /** Private notes for the business ("prefers a fade"), never shown to the customer. */
     notes: text("notes"),
     createdAt: createdAt(),
@@ -462,11 +489,13 @@ export const customers = pgTable(
   },
   (table) => [
     uniqueIndex("customers_business_email_idx").on(table.businessId, table.email),
+    uniqueIndex("customers_business_short_id_idx").on(table.businessId, table.shortId),
     index("customers_business_phone_idx").on(table.businessId, table.phone),
   ],
 );
 
-export const APPOINTMENT_STATUSES = ["confirmed", "cancelled"] as const;
+/** "no_show": it was confirmed and the customer didn't come; it frees the time it had. */
+export const APPOINTMENT_STATUSES = ["confirmed", "cancelled", "no_show"] as const;
 export const APPOINTMENT_SOURCES = ["online", "admin", "agent"] as const;
 export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
 
@@ -600,6 +629,10 @@ export const saleItems = pgTable(
     discountAmount: bigint("discount_amount", { mode: "number" }).notNull().default(0),
     /** quantity × unit price − discount. */
     total: bigint("total", { mode: "number" }).notNull(),
+    /** For products: their own commission and IVA when sold, so later changes don't rewrite it. */
+    commissionValue: doublePrecision("commission_value"),
+    commissionType: text("commission_type", { enum: COMMISSION_TYPES }),
+    taxRate: doublePrecision("tax_rate"),
     position: integer("position").notNull().default(0),
   },
   (table) => [
@@ -649,6 +682,32 @@ export const salePayments = pgTable(
 // Products and stock
 // ---------------------------------------------------------------------------
 
+/**
+ * The business's own lists of categories and brands, so products are filed the same way
+ * every time. `key` is what tells entries apart
+ * (see core's attributeKey): "Coca-Cola" and "coca cola" can't both exist.
+ */
+export const productAttributes = pgTable(
+  "product_attributes",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: PRODUCT_ATTRIBUTE_KINDS }).notNull(),
+    name: text("name").notNull(),
+    key: text("key").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("product_attributes_business_kind_key_idx").on(
+      table.businessId,
+      table.kind,
+      table.key,
+    ),
+  ],
+);
+
 /** What the business sells or uses: shampoo, wax, a gift box… */
 export const products = pgTable(
   "products",
@@ -659,14 +718,23 @@ export const products = pgTable(
       .references(() => businesses.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     sku: text("sku"),
-    category: text("category"),
-    brand: text("brand"),
-    format: text("format"),
+    categoryId: text("category_id").references(() => productAttributes.id),
+    brandId: text("brand_id").references(() => productAttributes.id),
+    /** How much it holds, in `unit`: 400 (ml). Both or neither. */
     content: doublePrecision("content"),
-    unit: text("unit", { enum: PRODUCT_UNITS }).notNull().default("unit"),
+    unit: text("unit", { enum: PRODUCT_UNITS }),
+    description: text("description"),
     priceAmount: bigint("price_amount", { mode: "number" }).notNull(),
+    /** What the team pays for it (internal sales); null: the sale price. */
+    internalPriceAmount: bigint("internal_price_amount", { mode: "number" }),
     costAmount: bigint("cost_amount", { mode: "number" }),
-    minStock: integer("min_stock").notNull().default(0),
+    /** Paid to whoever sells it instead of their usual product commission; null: theirs. */
+    commissionValue: doublePrecision("commission_value"),
+    commissionType: text("commission_type", { enum: COMMISSION_TYPES })
+      .notNull()
+      .default("percent"),
+    /** The price includes this IVA, in percent; null when it doesn't say. */
+    taxRate: doublePrecision("tax_rate"),
     forSale: boolean("for_sale").notNull().default(true),
     active: boolean("active").notNull().default(true),
     createdAt: createdAt(),
@@ -687,6 +755,8 @@ export const productStock = pgTable(
       .references(() => locations.id, { onDelete: "cascade" }),
     /** May go below zero when something sells before it's entered. */
     quantity: integer("quantity").notNull().default(0),
+    /** A warning shows when `quantity` goes down to this; null: no warning here. */
+    alertAt: integer("alert_at"),
   },
   (table) => [primaryKey({ columns: [table.productId, table.locationId] })],
 );

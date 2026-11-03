@@ -1,8 +1,15 @@
 import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { type Customer, customers } from "../db/schema.ts";
+import { newCustomerShortId } from "./codes.ts";
 
 type Contact = { phone: string | null; email: string | null };
+/** What a booking may also tell about the customer, when the business's form asks. */
+type Extras = {
+  birthDate?: string | null;
+  document?: string | null;
+  gender?: Customer["gender"];
+};
 type Tx = Pick<Db, "select" | "insert" | "update">;
 
 /**
@@ -41,21 +48,24 @@ export async function saveBookingCustomer(
   tx: Tx,
   businessId: string,
   match: Awaited<ReturnType<typeof matchCustomer>>,
-  details: Contact & { firstName: string; lastName: string },
+  details: Contact & Extras & { firstName: string; lastName: string },
 ): Promise<string> {
   const { customer, emailOwner } = match;
   if (!customer) {
     const [created] = await tx
       .insert(customers)
-      .values({ ...details, businessId })
+      .values({ ...details, businessId, shortId: await newCustomerShortId(tx, businessId) })
       .returning({ id: customers.id });
     if (!created) throw new Error("customer insert returned nothing");
     return created.id;
   }
-  const missing: Partial<Contact> = {};
+  const missing: Partial<Contact> & Extras = {};
   if (!customer.phone && details.phone) missing.phone = details.phone;
   // Emails are unique per business: only take it if nobody else has it.
   if (!customer.email && details.email && !emailOwner) missing.email = details.email;
+  if (!customer.birthDate && details.birthDate) missing.birthDate = details.birthDate;
+  if (!customer.document && details.document) missing.document = details.document;
+  if (!customer.gender && details.gender) missing.gender = details.gender;
   if (Object.keys(missing).length > 0) {
     await tx
       .update(customers)

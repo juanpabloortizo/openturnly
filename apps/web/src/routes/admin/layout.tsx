@@ -3,6 +3,7 @@ import {
   CalendarDays,
   ChartColumn,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
@@ -15,13 +16,15 @@ import {
   Plus,
   Receipt,
   Scissors,
+  Search,
   Settings,
+  Store,
   TriangleAlert,
   Users,
   Wallet,
   X,
 } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Link,
@@ -29,14 +32,17 @@ import {
   NavLink,
   Outlet,
   useLocation,
+  useNavigate,
   useOutletContext,
   useParams,
 } from "react-router";
 import { Logo, LogoMark } from "../../components/brand.tsx";
+import { searchable } from "../../components/combobox.tsx";
 import { Spinner } from "../../components/ui.tsx";
 import type { Business, User } from "../../lib/api.ts";
-import { useBusinesses } from "../../lib/businesses.ts";
+import { businessPath, useBusinesses } from "../../lib/businesses.ts";
 import { cn } from "../../lib/cn.ts";
+import { useLowStockCount } from "../../lib/inventory.ts";
 import { loginPath, useInstallNotices, useMe } from "../../lib/session.ts";
 import { useAppTheme } from "../../lib/theme.ts";
 import { AccountMenu } from "./account.tsx";
@@ -156,103 +162,58 @@ export function AdminLayout() {
 
 function SidebarContent({ user, collapsed }: { user: User; collapsed: boolean }) {
   const { t } = useTranslation();
-  const { businessId } = useParams();
+  const { businessCode } = useParams();
   const businesses = useBusinesses();
-  const current = businesses.data?.find((business) => business.id === businessId);
-  const base = businessId ? `/admin/businesses/${businessId}` : null;
+  const current = businesses.data?.find((business) => business.shortId === businessCode);
+  const base = businessCode ? `/admin/${businessCode}` : null;
 
   // Professionals only work with their own agenda.
   const role = current?.access.role;
   const manages = role !== "professional";
-  // Grouped like the work: selling, products, numbers, then setting the business up.
-  type NavGroup = "sales" | "admin";
-  const businessNav: {
-    to: string;
-    label: string;
-    icon: typeof CalendarDays;
-    tour: string;
-    end?: boolean;
-    group?: NavGroup;
-  }[] = base
+  const lowStock = useLowStockCount(current?.id ?? "", Boolean(current) && manages).data ?? 0;
+  // The day-to-day first; sales and setting the business up fold into submenus, last.
+  const leaf = (path: string, label: string, icon: NavLeaf["icon"], tour: string): NavLeaf => ({
+    to: `${base}${path}`,
+    label,
+    icon,
+    tour,
+  });
+  const businessNav: NavEntry[] = base
     ? [
         { to: base, label: t("nav.agenda"), icon: CalendarDays, end: true, tour: "agenda" },
         ...(manages
           ? [
+              leaf("/customers", t("nav.customers"), Contact, "customers"),
               {
-                to: `${base}/customers`,
-                label: t("nav.customers"),
-                icon: Contact,
-                tour: "customers",
+                ...leaf("/inventory", t("nav.inventory"), Package, "inventory"),
+                badge: lowStock > 0 ? t("nav.lowStock", { count: lowStock }) : undefined,
+                count: lowStock,
               },
+              leaf("/reports", t("nav.reports"), ChartColumn, "reports"),
               {
-                to: `${base}/reports`,
-                label: t("nav.reports"),
-                icon: ChartColumn,
-                tour: "reports",
-              },
-              {
-                to: `${base}/sales`,
+                group: "sales" as const,
                 label: t("nav.sales"),
                 icon: Receipt,
                 tour: "sales",
-                group: "sales" as const,
+                children: [
+                  leaf("/sales", t("nav.salesList"), Receipt, "sales-list"),
+                  leaf("/cash", t("nav.cash"), Wallet, "cash"),
+                  leaf("/gift-cards", t("nav.giftCards"), Gift, "gift-cards"),
+                ],
               },
               {
-                to: `${base}/cash`,
-                label: t("nav.cash"),
-                icon: Wallet,
-                tour: "cash",
-                group: "sales" as const,
-              },
-              {
-                to: `${base}/gift-cards`,
-                label: t("nav.giftCards"),
-                icon: Gift,
-                tour: "gift-cards",
-                group: "sales" as const,
-              },
-              {
-                to: `${base}/inventory`,
-                label: t("nav.inventory"),
-                icon: Package,
-                tour: "inventory",
-                group: "sales" as const,
-              },
-              {
-                to: `${base}/services`,
-                label: t("nav.services"),
-                icon: Scissors,
-                tour: "services",
                 group: "admin" as const,
+                label: t("nav.admin"),
+                icon: Store,
+                tour: "admin",
+                children: [
+                  leaf("/services", t("nav.services"), Scissors, "services"),
+                  leaf("/professionals", t("nav.professionals"), Users, "professionals"),
+                  leaf("/locations", t("nav.locations"), MapPin, "locations"),
+                  leaf("/hours", t("nav.hours"), Clock3, "hours"),
+                ],
               },
-              {
-                to: `${base}/professionals`,
-                label: t("nav.professionals"),
-                icon: Users,
-                tour: "professionals",
-                group: "admin" as const,
-              },
-              {
-                to: `${base}/locations`,
-                label: t("nav.locations"),
-                icon: MapPin,
-                tour: "locations",
-                group: "admin" as const,
-              },
-              {
-                to: `${base}/hours`,
-                label: t("nav.hours"),
-                icon: Clock3,
-                tour: "hours",
-                group: "admin" as const,
-              },
-              {
-                to: `${base}/settings`,
-                label: t("nav.settings"),
-                icon: Settings,
-                tour: "settings",
-                group: "admin" as const,
-              },
+              leaf("/settings", t("nav.settings"), Settings, "settings"),
             ]
           : []),
       ]
@@ -278,23 +239,20 @@ function SidebarContent({ user, collapsed }: { user: User; collapsed: boolean })
       </div>
 
       <nav className="mt-4 flex-1 space-y-1 overflow-y-auto px-3 pb-4">
-        {businessNav.map(({ group, ...item }, index) => (
-          <div key={item.to}>
-            {group && businessNav[index - 1]?.group !== group && (
-              <div
-                className={cn(
-                  "pt-4 pb-1",
-                  collapsed
-                    ? "mx-2 border-t border-zinc-200"
-                    : "px-3 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase",
-                )}
-              >
-                {!collapsed && t(`nav.groups.${group}`)}
-              </div>
-            )}
-            <SidebarLink collapsed={collapsed} {...item} />
-          </div>
-        ))}
+        {businessNav.map((entry, index) => {
+          if ("children" in entry) {
+            return <SidebarGroup key={entry.group} {...entry} collapsed={collapsed} />;
+          }
+          // Collapsed, a group opens with a divider; a page right after one gets its own.
+          const previous = businessNav[index - 1];
+          const afterGroup = collapsed && previous !== undefined && "children" in previous;
+          return (
+            <Fragment key={entry.to}>
+              {afterGroup && <div className="mx-2 my-2 border-t border-zinc-200" />}
+              <SidebarLink collapsed={collapsed} {...entry} />
+            </Fragment>
+          );
+        })}
       </nav>
 
       <AccountMenu
@@ -321,6 +279,99 @@ function navItemClass(active: boolean) {
   );
 }
 
+type NavLeaf = {
+  to: string;
+  label: string;
+  icon: typeof CalendarDays;
+  /** Where the guided tour points at it: nav-<tour>. */
+  tour: string;
+  end?: boolean;
+  /** Something that needs a look ("3 con stock bajo"), shown as a count. */
+  badge?: string;
+  count?: number;
+};
+type NavEntry =
+  | NavLeaf
+  | {
+      group: "sales" | "admin";
+      label: string;
+      icon: typeof CalendarDays;
+      tour: string;
+      children: NavLeaf[];
+    };
+
+/**
+ * A row that unfolds its pages underneath. It opens by itself on one of its pages; collapsed
+ * to icons, the pages show as icons after a divider (the nav adds the one after them).
+ */
+function SidebarGroup({
+  label,
+  icon: Icon,
+  tour,
+  children,
+  collapsed,
+}: Extract<NavEntry, { children: NavLeaf[] }> & { collapsed: boolean }) {
+  const { pathname } = useLocation();
+  const here = children.some(
+    (child) => pathname === child.to || pathname.startsWith(`${child.to}/`),
+  );
+  const [open, setOpen] = useState(here);
+  useEffect(() => {
+    if (here) setOpen(true);
+  }, [here]);
+
+  if (collapsed) {
+    return (
+      <div className="space-y-1" data-tour={`nav-${tour}`}>
+        <div className="mx-2 my-2 border-t border-zinc-200" />
+        {children.map((child) => (
+          <SidebarLink key={child.to} collapsed {...child} />
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        data-tour={`nav-${tour}`}
+        // Folded on one of its pages, the row itself shows where you are.
+        className={cn(navItemClass(here && !open), "w-full")}
+      >
+        <Icon className="size-[18px] shrink-0" aria-hidden />
+        <span className="flex-1 truncate text-left">{label}</span>
+        <ChevronDown
+          className={cn("size-4 shrink-0 transition-transform", open && "rotate-180")}
+          aria-hidden
+        />
+      </button>
+      {open && (
+        <div className="mt-0.5 mb-1 ml-[1.3rem] space-y-0.5 border-l border-zinc-200 pl-2.5">
+          {children.map((child) => (
+            <NavLink
+              key={child.to}
+              to={child.to}
+              data-tour={`nav-${child.tour}`}
+              className={({ isActive }) =>
+                cn(
+                  "flex h-8 items-center rounded-md px-2.5 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40",
+                  isActive
+                    ? "bg-zinc-200/70 font-semibold text-zinc-900"
+                    : "font-medium text-zinc-600 hover:bg-zinc-200/40 hover:text-zinc-900",
+                )
+              }
+            >
+              <span className="truncate">{child.label}</span>
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SidebarLink({
   to,
   label,
@@ -328,6 +379,8 @@ function SidebarLink({
   end,
   collapsed,
   tour,
+  badge,
+  count,
 }: {
   to: string;
   label: string;
@@ -336,22 +389,41 @@ function SidebarLink({
   collapsed: boolean;
   /** Where the guided tour points at it: nav-<tour>. */
   tour: string;
+  badge?: string;
+  count?: number;
 }) {
   return (
     <NavLink
       to={to}
       end={end}
       data-tour={`nav-${tour}`}
-      title={collapsed ? label : undefined}
-      className={({ isActive }) => cn(navItemClass(isActive), collapsed && "justify-center px-0")}
+      title={collapsed ? [label, badge].filter(Boolean).join(" · ") : badge}
+      className={({ isActive }) =>
+        cn(navItemClass(isActive), "relative", collapsed && "justify-center px-0")
+      }
     >
       <Icon className="size-[18px] shrink-0" aria-hidden />
       {!collapsed && <span className="truncate">{label}</span>}
+      {badge &&
+        (collapsed ? (
+          <span
+            className="absolute top-1.5 right-1.5 size-2 rounded-full bg-amber-500"
+            aria-hidden
+          />
+        ) : (
+          <span className="ml-auto rounded-full bg-amber-100 px-1.5 py-px text-[11px] font-semibold text-amber-800 tabular-nums">
+            {count}
+          </span>
+        ))}
+      {badge && <span className="sr-only">{badge}</span>}
     </NavLink>
   );
 }
 
 /** Shows the business being managed and lets you jump to another one. */
+/** With more than one business to pick from, the switcher can be searched. */
+const SEARCH_FROM = 2;
+
 function BusinessSwitcher({
   businesses,
   current,
@@ -364,8 +436,20 @@ function BusinessSwitcher({
   isOwner: boolean;
 }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const canSearch = businesses.length >= SEARCH_FROM;
+  const needle = searchable(query.trim());
+  const shown = needle
+    ? businesses.filter((business) => searchable(business.name).includes(needle))
+    : businesses;
+
+  // Each time it opens, the search starts empty.
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -384,7 +468,8 @@ function BusinessSwitcher({
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        title={collapsed ? label : undefined}
+        // The whole name on hover, for long ones cut short.
+        title={label}
         aria-expanded={open}
         className={cn(
           "flex w-full items-center gap-2 rounded-md p-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40",
@@ -396,9 +481,8 @@ function BusinessSwitcher({
         <BusinessAvatar name={current?.name} logoUrl={current?.logoUrl} />
         {!collapsed && (
           <>
-            <span className="min-w-0 flex-1">
-              <span className="block text-xs text-zinc-400">{t("nav.business")}</span>
-              <span className="block truncate text-sm font-medium text-zinc-900">{label}</span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-900">
+              {label}
             </span>
             <ChevronsUpDown className="size-4 shrink-0 text-zinc-400" aria-hidden />
           </>
@@ -411,11 +495,42 @@ function BusinessSwitcher({
             collapsed ? "left-full top-0 ml-2" : "left-0",
           )}
         >
+          {canSearch && (
+            <div className="relative mb-1 border-b border-zinc-100 pb-1">
+              <Search
+                className="pointer-events-none absolute top-[calc(50%-2px)] left-2.5 size-4 -translate-y-1/2 text-zinc-400"
+                aria-hidden
+              />
+              <input
+                type="search"
+                // biome-ignore lint/a11y/noAutofocus: the menu opens to search it.
+                autoFocus={window.matchMedia("(pointer: fine)").matches}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setOpen(false);
+                  // Enter opens the first business found.
+                  if (event.key === "Enter" && shown[0]) {
+                    navigate(businessPath(shown[0]));
+                    setOpen(false);
+                  }
+                }}
+                placeholder={t("nav.searchBusiness")}
+                aria-label={t("nav.searchBusiness")}
+                className="h-9 w-full rounded-lg bg-zinc-50 pr-2 pl-8 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:bg-white focus:ring-1 focus:ring-brand-300 [&::-webkit-search-cancel-button]:hidden"
+              />
+            </div>
+          )}
           <div className="max-h-72 overflow-y-auto">
-            {businesses.map((business) => (
+            {shown.length === 0 && (
+              <p className="px-2 py-3 text-center text-[13px] text-zinc-500">
+                {t("nav.noBusinessMatches")}
+              </p>
+            )}
+            {shown.map((business) => (
               <Link
                 key={business.id}
-                to={`/admin/businesses/${business.id}`}
+                to={businessPath(business)}
                 onClick={() => setOpen(false)}
                 className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
               >

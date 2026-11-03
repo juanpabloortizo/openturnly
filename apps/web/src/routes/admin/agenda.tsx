@@ -24,6 +24,8 @@ import {
   Phone,
   Plus,
   ShieldAlert,
+  UserCheck,
+  UserX,
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -55,6 +57,7 @@ import {
   useCancelAppointment,
   useHoursAt,
   useLocations,
+  useNoShow,
   useProfessionals,
   useRescheduleAppointment,
   useServices,
@@ -129,7 +132,8 @@ export function AgendaPage() {
     .filter((appointment) => !resourceFilter || appointment.resourceId === resourceFilter)
     .filter((appointment) => !locationFilter || appointment.locationId === locationFilter)
     .map((appointment) => {
-      const color = colorOf(appointment.resourceId);
+      // A no-show keeps its place on the calendar, greyed out.
+      const color = appointment.status === "no_show" ? "#a1a1aa" : colorOf(appointment.resourceId);
       return {
         id: appointment.id,
         title: `${appointment.customer.firstName} ${appointment.customer.lastName}`,
@@ -412,11 +416,13 @@ export function AgendaPage() {
 function EventCard({ info }: { info: EventContentArg }) {
   const appointment = info.event.extendedProps.appointment as Appointment;
   const start = info.timeText.split(/\s*[-–]\s*/)[0];
+  // A no-show: the name struck through, so the calendar still shows what happened.
+  const noShow = appointment.status === "no_show" && "text-zinc-500 line-through";
   if (info.view.type === "dayGridMonth") {
     return (
       <span className="flex min-w-0 items-center gap-1.5 px-1 text-[11px]">
         <span className="text-zinc-500 tabular-nums">{start}</span>
-        <span className="truncate font-medium text-zinc-900">{info.event.title}</span>
+        <span className={cn("truncate font-medium text-zinc-900", noShow)}>{info.event.title}</span>
       </span>
     );
   }
@@ -426,13 +432,17 @@ function EventCard({ info }: { info: EventContentArg }) {
     return (
       <div className="flex h-full min-w-0 items-center gap-1.5 overflow-hidden px-2 text-[11px] leading-none">
         <span className="text-zinc-600 tabular-nums">{start}</span>
-        <span className="truncate font-semibold text-zinc-900">{info.event.title}</span>
+        <span className={cn("truncate font-semibold text-zinc-900", noShow)}>
+          {info.event.title}
+        </span>
       </div>
     );
   }
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden px-2 py-1 leading-snug">
-      <span className="truncate text-xs font-semibold text-zinc-900">{info.event.title}</span>
+      <span className={cn("truncate text-xs font-semibold text-zinc-900", noShow)}>
+        {info.event.title}
+      </span>
       <span className="truncate text-[11px] text-zinc-600">
         <span className="tabular-nums">{start}</span> · {appointment.serviceName}
       </span>
@@ -511,6 +521,7 @@ function AppointmentDetails({
   const { business } = useBusinessContext();
   const confirm = useConfirm();
   const cancel = useCancelAppointment(business.id);
+  const noShows = useNoShow(business.id);
   const [editing, setEditing] = useState(false);
   // Charging it, leaving a deposit, or looking at the sale that charged it.
   const [payment, setPayment] = useState<"charge" | "deposit" | "sale" | null>(null);
@@ -527,9 +538,19 @@ function AppointmentDetails({
   const { customer } = appointment;
 
   const cancelled = appointment.status === "cancelled";
+  const noShow = appointment.status === "no_show";
+  // Once it starts, the customer either came (and pays) or didn't.
+  const started = Date.parse(appointment.startsAt) <= Date.now();
   const rows = [
     { label: t("booking.code"), value: appointment.code },
-    ...(cancelled ? [{ label: t("agenda.colStatus"), value: t("agenda.statusCancelled") }] : []),
+    ...(cancelled || noShow
+      ? [
+          {
+            label: t("agenda.colStatus"),
+            value: t(noShow ? "agenda.statusNoShow" : "agenda.statusCancelled"),
+          },
+        ]
+      : []),
     { label: t("booking.date"), value: `${day}, ${start.time} – ${end.time}` },
     ...(appointment.locationName && severalLocations
       ? [{ label: t("booking.location"), value: appointment.locationName }]
@@ -575,6 +596,23 @@ function AppointmentDetails({
     });
   };
 
+  const markNoShow = () =>
+    noShows.mark.mutate(appointment.id, {
+      onSuccess: () => {
+        toast.success(t("agenda.noShowMarked"));
+        onClose();
+      },
+      onError: (error) => toast.error(errorMessage(t, error)),
+    });
+  const undoNoShow = () =>
+    noShows.undo.mutate(appointment.id, {
+      onSuccess: () => {
+        toast.success(t("agenda.noShowUndone"));
+        onClose();
+      },
+      onError: (error) => toast.error(errorMessage(t, error)),
+    });
+
   if (editing) {
     return (
       <RescheduleForm appointment={appointment} onBack={() => setEditing(false)} onDone={onClose} />
@@ -598,14 +636,24 @@ function AppointmentDetails({
             <span className="mr-auto" />
           ) : (
             <Link
-              to={`customers?customer=${customer.id}`}
+              to={`customers?customer=${customer.shortId}`}
               className={buttonClass({ variant: "ghost", className: "mr-auto" })}
             >
               <Contact className="size-4" aria-hidden />
               {t("customers.viewCustomer")}
             </Link>
           )}
-          {cancelled ? (
+          {noShow ? (
+            <>
+              <Button variant="secondary" onClick={onClose}>
+                {t("common.close")}
+              </Button>
+              <Button loading={noShows.undo.isPending} onClick={undoNoShow}>
+                <UserCheck className="size-4" aria-hidden />
+                {t("agenda.undoNoShow")}
+              </Button>
+            </>
+          ) : cancelled ? (
             <Button variant="secondary" onClick={onClose}>
               {t("common.close")}
             </Button>
@@ -620,6 +668,13 @@ function AppointmentDetails({
                   onClick={cancelAppointment}
                 >
                   {t("agenda.cancelAppointment")}
+                </Button>
+              )}
+              {/* Professionals don't see the payment box, where admins have it. */}
+              {isProfessional && started && (
+                <Button variant="secondary" loading={noShows.mark.isPending} onClick={markNoShow}>
+                  <UserX className="size-4" aria-hidden />
+                  {t("agenda.markNoShow")}
                 </Button>
               )}
               <Button onClick={() => setEditing(true)}>
@@ -641,7 +696,7 @@ function AppointmentDetails({
           </div>
         ))}
       </dl>
-      {!isProfessional && !cancelled && (
+      {!isProfessional && !cancelled && !noShow && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 px-4 py-3">
           {appointment.sale ? (
             <>
@@ -667,7 +722,18 @@ function AppointmentDetails({
                   </div>
                 )}
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                {started && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    loading={noShows.mark.isPending}
+                    onClick={markNoShow}
+                  >
+                    <UserX className="size-4" aria-hidden />
+                    {t("agenda.markNoShow")}
+                  </Button>
+                )}
                 <Button variant="secondary" size="sm" onClick={() => setPayment("deposit")}>
                   {t("deposits.new")}
                 </Button>

@@ -28,6 +28,7 @@ appointment.
 | When an appointment is booked | `appointment.created` | Right away, from the booking page, the panel or an AI agent |
 | When an appointment is moved | `appointment.rescheduled` | Right away, with `previous_date` and `previous_time` |
 | When an appointment is cancelled | `appointment.cancelled` | Right away |
+| When a customer doesn't come | `appointment.no_show` | Right away, when the appointment is marked "No-show" |
 | An appointment is coming up | `appointment.reminder` | X minutes, hours or days before it starts |
 | When an appointment ends | `appointment.followup` | When it ends (add a wait step to ask for a review later) |
 
@@ -36,8 +37,9 @@ trigger starts the moment it happens, and **wait** steps send later. Waits add u
 after "wait 10 minutes" and "wait 1 hour" goes out 1 hour and 10 minutes after the flow
 starts (so "appointment ends → wait 1 hour → notify" asks for the review an hour after the
 appointment). If the
-appointment is cancelled while a step waits, it isn't sent (it shows as skipped); steps
-sent right away always go out.
+appointment is cancelled or marked as a no-show while a step waits, it isn't sent (it shows
+as skipped), unless the flow started with that very change; steps sent right away always go
+out.
 
 Reminders go out once per confirmed appointment, and only if it was booked before that
 moment (an appointment booked 30 minutes ahead gets no "1 hour before" reminder). If an
