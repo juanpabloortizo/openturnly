@@ -94,6 +94,20 @@ in the web app under `errors`.
 - **Simplicity wins.** If a feature makes installing or using OpenTurnly harder, it probably
   does not belong in the core.
 
+## Local notes and the pre-commit guard
+
+Keep personal notes and drafts in `work/`, `internal/` or a `*.local.md` file: git ignores
+them. Enable the repository's pre-commit guard once per clone so they can't be committed by
+accident:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+It stops a commit that force-adds one of those paths or adds text marked as not to be
+committed (the markers are spelled out in `.githooks/pre-commit`). Terms listed in
+`work/forbidden-words.txt`, one per line, are blocked too.
+
 ## npm install scripts
 
 npm blocks dependency install scripts unless they are approved in `package.json`

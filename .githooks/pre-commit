@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Pre-commit guard: keep local-only notes and terms out of the repository.
+#
+# It blocks local-only paths that were force-added (work/, internal/, *.local.md), a
+# commit-blocking marker, and any term listed in work/forbidden-words.txt. That list is
+# ignored by git, so the terms themselves never get committed.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+staged="$(git diff --cached --name-only --diff-filter=ACM || true)"
+[ -z "$staged" ] && exit 0
+
+fail=0
+
+# 1) local-only paths that were force-added
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  case "$f" in
+    work/* | internal/* | *.local.md)
+      echo "✋ '$f' is local-only and must not be committed."
+      fail=1
+      ;;
+  esac
+done <<<"$staged"
+
+# 2) built-in markers + the terms from the ignored list
+patterns=$'DO-NOT-COMMIT\nINTERNAL-ONLY'
+wordfile="$root/work/forbidden-words.txt"
+if [ -f "$wordfile" ]; then
+  while IFS= read -r w || [ -n "$w" ]; do
+    w="$(printf '%s' "$w" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    case "$w" in "" | \#*) continue ;; esac
+    patterns="$patterns"$'\n'"$w"
+  done <"$wordfile"
+fi
+
+# 3) staged additions and file names, case-insensitive, fixed strings. This file is left
+#    out of the scan because it spells out the markers it looks for.
+added="$(git diff --cached --diff-filter=ACM -U0 -- . ':(exclude).githooks/pre-commit' | grep '^+' || true)"
+haystack="$added"$'\n'"$staged"
+while IFS= read -r p; do
+  [ -z "$p" ] && continue
+  if printf '%s' "$haystack" | grep -iqF -- "$p"; then
+    echo "✋ Blocked: staged content contains a forbidden term (\"$p\")."
+    fail=1
+  fi
+done <<<"$patterns"
+
+if [ "$fail" -ne 0 ]; then
+  echo ""
+  echo "Commit aborted by the pre-commit guard. Keep local notes in work/ or remove the"
+  echo "flagged content. (Override only if you are sure: --no-verify)"
+  exit 1
+fi
+exit 0

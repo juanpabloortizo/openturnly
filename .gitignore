@@ -9,3 +9,8 @@ data/
 coverage/
 playwright-report/
 test-results/
+
+# Local-only notes, never committed (see .githooks/pre-commit)
+work/
+internal/
+*.local.md
