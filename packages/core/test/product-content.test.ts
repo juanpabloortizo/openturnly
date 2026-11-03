@@ -17,6 +17,13 @@ describe("parseContent", () => {
       expect(parseContent(text)).toBeNull();
     }
   });
+
+  it("answers at once for a huge cell from a spreadsheet", () => {
+    const started = Date.now();
+    expect(parseContent(`${"1".repeat(100_000)}!`)).toBeNull();
+    expect(parseContent(`${"1".repeat(100_000)} ml`)).toBeNull();
+    expect(Date.now() - started).toBeLessThan(500);
+  });
 });
 
 describe("missingContentField", () => {

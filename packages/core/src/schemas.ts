@@ -886,6 +886,9 @@ export function nestFields(
   const data: Record<string, unknown> = {};
   for (const field of fields) {
     const [group = "", key] = field.split(".");
+    // Fields are OpenTurnly's own names, never typed by anyone; still, no name may reach
+    // an object's prototype.
+    if (group === "__proto__" || group === "constructor" || key === "__proto__") continue;
     if (!key) {
       data[group] = value(field);
       continue;
@@ -1320,7 +1323,9 @@ export function parseContent(text: string): { content: number; unit: ProductUnit
     PRODUCT_UNITS.find((unit) => UNIT_WORDS[unit].includes(word.replace(/\.$/, "")));
   const alone = unitOf(plain);
   if (alone === "unit") return { content: 1, unit: "unit" };
-  const match = plain.match(/(\d+(?:[.,]\d+)?)\s*([a-z]+\.?)$/);
+  // The number starts where a run of digits starts: tried from inside one, a cell of
+  // digits that ends in no unit took quadratic time, enough to stall the server.
+  const match = plain.match(/(?:^|[^\d.,])(\d+(?:[.,]\d+)?)\s*([a-z]+\.?)$/);
   const unit = match?.[2] ? unitOf(match[2]) : undefined;
   const content = Number(match?.[1]?.replace(",", "."));
   return unit && content > 0 && content <= 1e6 ? { content, unit } : null;

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  type AutomationField,
   fieldsBody,
   jsonTemplateProblem,
+  nestFields,
   renderJsonTemplate,
   renderTemplate,
   webhookActionSchema,
@@ -99,6 +101,12 @@ describe("Bodies built from fields", () => {
     expect(
       renderTemplate("{{customer.first_name}}|{{customer}}|{{nada.x}}|{{__proto__}}", values),
     ).toBe('Ana "La Jefa"|||');
+  });
+
+  it("never let a field name reach an object's prototype", () => {
+    const unsafe = ["__proto__.polluted", "constructor.prototype", "customer.__proto__"];
+    expect(nestFields(unsafe as AutomationField[], () => "x")).toEqual({});
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
 });
 

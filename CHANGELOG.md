@@ -6,6 +6,14 @@ All notable changes to OpenTurnly are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- Product import: reading a size ("400 ml") from a spreadsheet cell took quadratic time on
+  a huge cell of digits, enough for a signed-in admin to stall the server for seconds. It
+  now answers at once whatever the cell holds.
+- Workflow data: field names can no longer reach an object's prototype. They are always
+  OpenTurnly's own names, so this was not reachable; it closes a code scanning warning.
+
 ## [1.3.0] - 2026-11-03
 
 Easier to try and easier to sell from: a new install can fill a sample business in one
