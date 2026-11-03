@@ -101,6 +101,69 @@ async function unzip(buffer: ArrayBuffer, wanted: (name: string) => boolean) {
   return files;
 }
 
+type XmlNode = { name: string; attributes: Record<string, string>; children: (XmlNode | string)[] };
+
+const ENTITIES: Record<string, string> = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" };
+
+/** "&lt;b&gt; &#233;" → "<b> é". Unknown or broken references stay as written. */
+function decodeXml(text: string) {
+  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (reference, code: string) => {
+    if (!code.startsWith("#")) return ENTITIES[code] ?? reference;
+    const point =
+      code[1]?.toLowerCase() === "x" ? Number.parseInt(code.slice(2), 16) : Number(code.slice(1));
+    return point >= 0 && point <= 0x10ffff ? String.fromCodePoint(point) : reference;
+  });
+}
+
+/**
+ * A small reader for the XML inside a spreadsheet: elements, their attributes and text,
+ * and nothing that could run or load. Prefixes are dropped from element names ("x:row" is
+ * a row), as some programs write them.
+ */
+function parseXml(text: string): XmlNode {
+  const root: XmlNode = { name: "", attributes: {}, children: [] };
+  const open: XmlNode[] = [root];
+  const tokens =
+    /<!\[CDATA\[([\s\S]*?)\]\]>|<!--[\s\S]*?-->|<[?!][\s\S]*?>|<\/([^\s>]+)\s*>|<([^\s/>!?]+)((?:\s+[^\s=/>]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>/g;
+  let last = 0;
+  for (const token of text.matchAll(tokens)) {
+    const current = open[open.length - 1] as XmlNode;
+    if (token.index > last) current.children.push(decodeXml(text.slice(last, token.index)));
+    last = token.index + token[0].length;
+    const [, cdata, closing, opening, attributes = "", selfClosing] = token;
+    if (cdata !== undefined) {
+      current.children.push(cdata);
+    } else if (closing) {
+      if (open.length > 1) open.pop();
+    } else if (opening) {
+      const node: XmlNode = { name: opening.replace(/^.*:/, ""), attributes: {}, children: [] };
+      for (const [, name = "", double, single] of attributes.matchAll(
+        /([^\s=]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g,
+      )) {
+        node.attributes[name] = decodeXml(double ?? single ?? "");
+      }
+      current.children.push(node);
+      if (!selfClosing) open.push(node);
+    }
+    // Comments, declarations and processing instructions are left out.
+  }
+  return root;
+}
+
+/** Every element called `name` inside `node`, in the order of the file. */
+function elementsOf(node: XmlNode, name: string): XmlNode[] {
+  return node.children.flatMap((child) =>
+    typeof child === "string"
+      ? []
+      : [...(child.name === name ? [child] : []), ...elementsOf(child, name)],
+  );
+}
+
+/** All the text inside an element. */
+function textOf(node: XmlNode): string {
+  return node.children.map((child) => (typeof child === "string" ? child : textOf(child))).join("");
+}
+
 /** Column "A" → 0, "AB" → 27. */
 function columnIndex(letters: string) {
   return [...letters].reduce((index, letter) => index * 26 + letter.charCodeAt(0) - 64, 0) - 1;
@@ -115,20 +178,18 @@ export async function readXlsx(buffer: ArrayBuffer): Promise<SheetRow[]> {
       name === "xl/sharedStrings.xml" ||
       name.startsWith("xl/worksheets/"),
   );
-  const xml = (text: string) => new DOMParser().parseFromString(text, "application/xml");
-  const texts = (element: Element) =>
-    [...element.getElementsByTagName("t")].map((node) => node.textContent ?? "").join("");
+  const texts = (element: XmlNode) => elementsOf(element, "t").map(textOf).join("");
 
   // The first sheet in the workbook's own order.
   let path = "xl/worksheets/sheet1.xml";
   const workbook = files.get("xl/workbook.xml");
   const rels = files.get("xl/_rels/workbook.xml.rels");
   if (workbook && rels) {
-    const first = xml(workbook).getElementsByTagName("sheet")[0];
-    const id = first?.getAttribute("r:id");
-    const target = [...xml(rels).getElementsByTagName("Relationship")]
-      .find((rel) => rel.getAttribute("Id") === id)
-      ?.getAttribute("Target");
+    const first = elementsOf(parseXml(workbook), "sheet")[0];
+    const id = first?.attributes["r:id"];
+    const target = elementsOf(parseXml(rels), "Relationship").find(
+      (rel) => rel.attributes.Id === id,
+    )?.attributes.Target;
     if (target) path = target.startsWith("/") ? target.slice(1) : `xl/${target}`;
   }
   const sheet =
@@ -136,16 +197,17 @@ export async function readXlsx(buffer: ArrayBuffer): Promise<SheetRow[]> {
     [...files.entries()].find(([name]) => /^xl\/worksheets\/sheet\d*\.xml$/.test(name))?.[1];
   if (!sheet) throw new Error("not_a_spreadsheet");
   const shared = files.get("xl/sharedStrings.xml");
-  const strings = shared ? [...xml(shared).getElementsByTagName("si")].map(texts) : [];
+  const strings = shared ? elementsOf(parseXml(shared), "si").map(texts) : [];
 
   const rows: SheetRow[] = [];
-  for (const row of xml(sheet).getElementsByTagName("row")) {
+  for (const row of elementsOf(parseXml(sheet), "row")) {
     const cells: string[] = [];
-    for (const cell of row.getElementsByTagName("c")) {
-      const letters = (cell.getAttribute("r") ?? "").replace(/\d+/g, "");
+    for (const cell of elementsOf(row, "c")) {
+      const letters = (cell.attributes.r ?? "").replace(/\d+/g, "");
       const index = letters ? columnIndex(letters) : cells.length;
-      const type = cell.getAttribute("t");
-      const value = cell.getElementsByTagName("v")[0]?.textContent ?? "";
+      const type = cell.attributes.t;
+      const valueNode = elementsOf(cell, "v")[0];
+      const value = valueNode ? textOf(valueNode) : "";
       let text =
         type === "s" ? (strings[Number(value)] ?? "") : type === "inlineStr" ? texts(cell) : value;
       // Long numbers (phones) saved as numbers can come in scientific notation.
@@ -154,7 +216,7 @@ export async function readXlsx(buffer: ArrayBuffer): Promise<SheetRow[]> {
     }
     // Rows with nothing in them are often missing from the file: "r" keeps the count right.
     rows.push({
-      line: Number(row.getAttribute("r")) || rows.length + 1,
+      line: Number(row.attributes.r) || rows.length + 1,
       cells: Array.from(cells, (cell) => cell ?? ""),
     });
   }
