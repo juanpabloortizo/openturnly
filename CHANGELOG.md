@@ -14,6 +14,10 @@ All notable changes to OpenTurnly are documented here. The format follows
 - "My account" is now a page instead of a dialog, with your details, your password and your
   language and theme. The menu on your name is down to that and signing out.
 
+### Fixed
+
+- The sample business lost its no-show when the appointment fell on a short day.
+
 ### Security
 
 - Product import: reading a size ("400 ml") from a spreadsheet cell took quadratic time on

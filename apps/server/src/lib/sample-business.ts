@@ -216,8 +216,9 @@ const BOOKINGS: {
   status?: AppointmentStatus;
   admin?: boolean;
 }[] = [
-  { day: -2, time: "10:00", professional: 0, service: 1, customer: 0 },
-  { day: -2, time: "15:00", professional: 1, service: 0, customer: 2, status: "no_show" },
+  // Early, so it fits a short day: the no-show is what shows that status in the sample.
+  { day: -2, time: "10:00", professional: 0, service: 1, customer: 0, status: "no_show" },
+  { day: -2, time: "15:00", professional: 1, service: 0, customer: 2 },
   { day: -1, time: "11:00", professional: 2, service: 3, customer: 1, admin: true },
   { day: 0, time: "09:30", professional: 0, service: 0, customer: 1 },
   { day: 0, time: "11:00", professional: 1, service: 1, customer: 2 },
