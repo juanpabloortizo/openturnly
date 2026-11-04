@@ -322,8 +322,31 @@ export const es = {
     proxyBody:
       "OpenTurnly recibe visitas a través de un proxy (Caddy, Nginx, Cloudflare…), pero TRUST_PROXY está apagado: todas las visitas parecen venir de la misma dirección y los límites contra bots las frenarían juntas. Agrega TRUST_PROXY=true a la configuración y reinicia OpenTurnly.",
   },
+  auth: {
+    headline: "Todos tus negocios, en un solo panel.",
+    detail:
+      "Administra la agenda, los clientes y el equipo de cada sede. Cada profesional entra a ver y mover sus propias citas.",
+    preview: {
+      today: "Hoy",
+      confirmed: "Confirmada",
+      pending: "Pendiente",
+      summary: "{{businesses}} negocios · {{appointments}} citas hoy",
+      share: "{{confirmed}} confirmadas",
+      booked: "Nueva reserva",
+      bookedDetail: "{{customer}}, hoy a las {{time}}",
+      withProfessional: "{{customer}}, con {{professional}}",
+      businesses: { center: "Sede Centro", north: "Sede Norte", south: "Sede Sur" },
+      services: {
+        beard: "Corte y barba",
+        facial: "Limpieza facial",
+        manicure: "Manicure",
+        visit: "Consulta inicial",
+        cut: "Corte clásico",
+      },
+    },
+  },
   login: {
-    title: "Iniciar sesión",
+    title: "Hola de nuevo",
     subtitle: "Ingresa para gestionar tus negocios.",
     submit: "Ingresar",
   },
@@ -566,6 +589,8 @@ export const es = {
     title: "Mi cuenta",
     subtitle: "Tus datos para entrar a OpenTurnly.",
     details: "Tus datos",
+    preferences: "Preferencias",
+    preferencesHint: "Cómo se ve el panel para ti, en este navegador.",
     language: "Idioma",
     theme: "Tema",
     themes: { light: "Claro", dark: "Oscuro", system: "Como el dispositivo" },

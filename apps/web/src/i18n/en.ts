@@ -326,8 +326,31 @@ export const en: Messages<typeof es> = {
     proxyBody:
       "OpenTurnly gets visits through a proxy (Caddy, Nginx, Cloudflare…), but TRUST_PROXY is off: every visit seems to come from the same address, so the anti-bot limits would hold them all back together. Add TRUST_PROXY=true to the configuration and restart OpenTurnly.",
   },
+  auth: {
+    headline: "All your businesses, in one panel.",
+    detail:
+      "Run the calendar, customers and team of every location. Each professional signs in to see and move their own appointments.",
+    preview: {
+      today: "Today",
+      confirmed: "Confirmed",
+      pending: "Pending",
+      summary: "{{businesses}} businesses · {{appointments}} appointments today",
+      share: "{{confirmed}} confirmed",
+      booked: "New booking",
+      bookedDetail: "{{customer}}, today at {{time}}",
+      withProfessional: "{{customer}}, with {{professional}}",
+      businesses: { center: "Downtown", north: "North Side", south: "South Side" },
+      services: {
+        beard: "Haircut and beard",
+        facial: "Facial",
+        manicure: "Manicure",
+        visit: "First visit",
+        cut: "Classic cut",
+      },
+    },
+  },
   login: {
-    title: "Sign in",
+    title: "Welcome back",
     subtitle: "Sign in to manage your businesses.",
     submit: "Sign in",
   },
@@ -569,6 +592,8 @@ export const en: Messages<typeof es> = {
     title: "My account",
     subtitle: "Your details to sign in to OpenTurnly.",
     details: "Your details",
+    preferences: "Preferences",
+    preferencesHint: "How the panel looks for you, in this browser.",
     language: "Language",
     theme: "Theme",
     themes: { light: "Light", dark: "Dark", system: "Match the device" },

@@ -2,23 +2,22 @@ import { accountUpdateSchema, PASSWORD_MIN_LENGTH, passwordChangeSchema } from "
 import {
   ChevronsUpDown,
   Compass,
-  Languages,
   LogOut,
   type LucideIcon,
   Monitor,
   Moon,
   Sun,
-  SunMoon,
   UserRound,
 } from "lucide-react";
 import { type FormEvent, type ReactNode, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router";
 import { LanguageSwitcher } from "../../components/brand.tsx";
 import { useClickOutside } from "../../components/combobox.tsx";
-import { Modal, PasswordInput } from "../../components/controls.tsx";
+import { PageHeader, PasswordInput, SettingsCard } from "../../components/controls.tsx";
 import { PasswordField } from "../../components/password-field.tsx";
 import { toast } from "../../components/toast.tsx";
-import { Button, Field, Input } from "../../components/ui.tsx";
+import { Button, Card, Field, Input, Spinner } from "../../components/ui.tsx";
 import type { User } from "../../lib/api.ts";
 import { cn } from "../../lib/cn.ts";
 import {
@@ -28,25 +27,25 @@ import {
   fieldMessage,
   validate,
 } from "../../lib/forms.ts";
-import { useAccountMutations, useLogout, useVersion } from "../../lib/session.ts";
+import { useAccountMutations, useLogout, useMe, useVersion } from "../../lib/session.ts";
 import { setTheme, THEMES, type Theme, useTheme } from "../../lib/theme.ts";
 import { useTourMutations } from "../../lib/tours.ts";
 
 const THEME_ICONS: Record<Theme, LucideIcon> = { light: Sun, dark: Moon, system: Monitor };
 
 /**
- * The signed-in person at the bottom of the sidebar. Opens a menu with their account,
- * the language, the theme and signing out.
+ * The signed-in person at the bottom of the sidebar. Opens a short menu: the way to their
+ * account, and the way out.
  */
 export function AccountMenu({ user, collapsed }: { user: User; collapsed: boolean }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useClickOutside(open, [ref], () => setOpen(false));
   const logout = useLogout();
   const version = useVersion(user.role === "owner");
   const { replay } = useTourMutations();
+  const navigate = useNavigate();
 
   return (
     <div ref={ref} className="relative border-t border-zinc-200 p-3" data-tour="account">
@@ -98,7 +97,7 @@ export function AccountMenu({ user, collapsed }: { user: User; collapsed: boolea
                   icon={UserRound}
                   onClick={() => {
                     setOpen(false);
-                    setEditing(true);
+                    navigate("/admin/account");
                   }}
                 >
                   {t("account.title")}
@@ -125,20 +124,6 @@ export function AccountMenu({ user, collapsed }: { user: User; collapsed: boolea
                 </span>
               </span>
             </div>
-            <div className="flex items-center justify-between gap-3 px-2.5 py-1.5">
-              <span className="flex items-center gap-2.5 text-[13px] text-zinc-700">
-                <Languages className="size-4 text-zinc-400" aria-hidden />
-                {t("account.language")}
-              </span>
-              <LanguageSwitcher />
-            </div>
-            <div className="flex items-center justify-between gap-3 px-2.5 py-1.5">
-              <span className="flex items-center gap-2.5 text-[13px] text-zinc-700">
-                <SunMoon className="size-4 text-zinc-400" aria-hidden />
-                {t("account.theme")}
-              </span>
-              <ThemeSwitcher />
-            </div>
           </div>
           <div className="mt-1.5 flex items-center border-t border-zinc-100 pt-1.5">
             <div className="min-w-0 flex-1">
@@ -153,8 +138,6 @@ export function AccountMenu({ user, collapsed }: { user: User; collapsed: boolea
           </div>
         </div>
       )}
-
-      {editing && <AccountModal user={user} onClose={() => setEditing(false)} />}
     </div>
   );
 }
@@ -217,7 +200,20 @@ function ThemeSwitcher() {
 }
 
 /** "Mi cuenta": name and email, and the password, each saved on its own. */
-function AccountModal({ user, onClose }: { user: User; onClose: () => void }) {
+/** The account page: a person's details, password and preferences. */
+export function AccountPage() {
+  const { t } = useTranslation();
+  const me = useMe();
+  if (!me.data) return <Spinner />;
+  return (
+    <div className="mx-auto w-full max-w-3xl space-y-6">
+      <PageHeader title={t("account.title")} subtitle={t("account.subtitle")} />
+      <AccountProfile user={me.data} />
+    </div>
+  );
+}
+
+export function AccountProfile({ user }: { user: User }) {
   const { t } = useTranslation();
   const { update, changePassword } = useAccountMutations();
   const [details, setDetails] = useState({
@@ -269,97 +265,112 @@ function AccountModal({ user, onClose }: { user: User; onClose: () => void }) {
   };
 
   return (
-    <Modal open onClose={onClose} title={t("account.title")} description={t("account.subtitle")}>
-      <form onSubmit={saveDetails} className="space-y-4">
-        <h3 className="text-sm font-semibold text-zinc-900">{t("account.details")}</h3>
-        <Field label={t("fields.name")} error={fieldMessage(t, "name", detailErrors.name)}>
-          {(props) => (
-            <Input
-              {...props}
-              autoComplete="name"
-              value={details.name}
-              onChange={(event) => setDetails({ ...details, name: event.target.value })}
-            />
+    <div className="space-y-6">
+      <Card className="p-5 sm:p-6">
+        <form onSubmit={saveDetails} className="space-y-4">
+          <h3 className="text-sm font-semibold text-zinc-900">{t("account.details")}</h3>
+          <Field label={t("fields.name")} error={fieldMessage(t, "name", detailErrors.name)}>
+            {(props) => (
+              <Input
+                {...props}
+                autoComplete="name"
+                value={details.name}
+                onChange={(event) => setDetails({ ...details, name: event.target.value })}
+              />
+            )}
+          </Field>
+          <Field label={t("fields.email")} error={fieldMessage(t, "email", detailErrors.email)}>
+            {(props) => (
+              <Input
+                {...props}
+                type="email"
+                autoComplete="email"
+                value={details.email}
+                onChange={(event) => setDetails({ ...details, email: event.target.value })}
+              />
+            )}
+          </Field>
+          {emailChanged && (
+            <Field
+              label={t("account.currentPassword")}
+              hint={t("account.emailNeedsPassword")}
+              error={fieldMessage(t, "currentPassword", detailErrors.currentPassword)}
+            >
+              {(props) => (
+                <PasswordInput
+                  {...props}
+                  autoComplete="current-password"
+                  value={details.currentPassword}
+                  onChange={(event) =>
+                    setDetails({ ...details, currentPassword: event.target.value })
+                  }
+                />
+              )}
+            </Field>
           )}
-        </Field>
-        <Field label={t("fields.email")} error={fieldMessage(t, "email", detailErrors.email)}>
-          {(props) => (
-            <Input
-              {...props}
-              type="email"
-              autoComplete="email"
-              value={details.email}
-              onChange={(event) => setDetails({ ...details, email: event.target.value })}
-            />
-          )}
-        </Field>
-        {emailChanged && (
+          <div className="flex justify-end">
+            <Button type="submit" loading={update.isPending}>
+              {t("common.saveChanges")}
+            </Button>
+          </div>
+        </form>
+
+        <form onSubmit={savePassword} className="mt-6 space-y-4 border-t border-zinc-100 pt-6">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-900">{t("account.passwordTitle")}</h3>
+            <p className="mt-0.5 text-[13px] text-zinc-500">{t("account.passwordHint")}</p>
+          </div>
           <Field
             label={t("account.currentPassword")}
-            hint={t("account.emailNeedsPassword")}
-            error={fieldMessage(t, "currentPassword", detailErrors.currentPassword)}
+            error={fieldMessage(t, "currentPassword", passwordErrors.currentPassword)}
           >
             {(props) => (
               <PasswordInput
                 {...props}
                 autoComplete="current-password"
-                value={details.currentPassword}
+                value={passwords.currentPassword}
                 onChange={(event) =>
-                  setDetails({ ...details, currentPassword: event.target.value })
+                  setPasswords({ ...passwords, currentPassword: event.target.value })
                 }
               />
             )}
           </Field>
-        )}
-        <div className="flex justify-end">
-          <Button type="submit" loading={update.isPending}>
-            {t("common.saveChanges")}
-          </Button>
-        </div>
-      </form>
+          <Field
+            label={t("account.newPassword")}
+            hint={t("account.newPasswordHint", { min: PASSWORD_MIN_LENGTH })}
+            error={fieldMessage(t, "password", passwordErrors.newPassword)}
+          >
+            {(props) => (
+              <PasswordField
+                id={props.id}
+                invalid={props["aria-invalid"]}
+                describedBy={props["aria-describedby"]}
+                value={passwords.newPassword}
+                onChange={(newPassword) => setPasswords({ ...passwords, newPassword })}
+              />
+            )}
+          </Field>
+          <div className="flex justify-end">
+            <Button type="submit" variant="secondary" loading={changePassword.isPending}>
+              {t("account.changePassword")}
+            </Button>
+          </div>
+        </form>
+      </Card>
 
-      <form onSubmit={savePassword} className="mt-6 space-y-4 border-t border-zinc-100 pt-6">
-        <div>
-          <h3 className="text-sm font-semibold text-zinc-900">{t("account.passwordTitle")}</h3>
-          <p className="mt-0.5 text-[13px] text-zinc-500">{t("account.passwordHint")}</p>
+      <SettingsCard title={t("account.preferences")} description={t("account.preferencesHint")}>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-zinc-700">{t("account.language")}</span>
+            <LanguageSwitcher />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-zinc-700">{t("account.theme")}</span>
+            <ThemeSwitcher />
+          </div>
         </div>
-        <Field
-          label={t("account.currentPassword")}
-          error={fieldMessage(t, "currentPassword", passwordErrors.currentPassword)}
-        >
-          {(props) => (
-            <PasswordInput
-              {...props}
-              autoComplete="current-password"
-              value={passwords.currentPassword}
-              onChange={(event) =>
-                setPasswords({ ...passwords, currentPassword: event.target.value })
-              }
-            />
-          )}
-        </Field>
-        <Field
-          label={t("account.newPassword")}
-          hint={t("account.newPasswordHint", { min: PASSWORD_MIN_LENGTH })}
-          error={fieldMessage(t, "password", passwordErrors.newPassword)}
-        >
-          {(props) => (
-            <PasswordField
-              id={props.id}
-              invalid={props["aria-invalid"]}
-              describedBy={props["aria-describedby"]}
-              value={passwords.newPassword}
-              onChange={(newPassword) => setPasswords({ ...passwords, newPassword })}
-            />
-          )}
-        </Field>
-        <div className="flex justify-end">
-          <Button type="submit" variant="secondary" loading={changePassword.isPending}>
-            {t("account.changePassword")}
-          </Button>
-        </div>
-      </form>
-    </Modal>
+      </SettingsCard>
+    </div>
   );
 }
 

@@ -1,6 +1,5 @@
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn.ts";
-import { useAppTheme } from "../lib/theme.ts";
 
 /**
  * OpenTurnly's mark: an open clock face with the booked slot in its gap. Drawn in
@@ -72,38 +71,5 @@ export function LanguageSwitcher({ className }: { className?: string }) {
         </button>
       ))}
     </fieldset>
-  );
-}
-
-/** Centered card used by setup, login and invitation pages: the brand on top, language below. */
-export function AuthLayout({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
-  const { t } = useTranslation();
-  useAppTheme();
-  return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-zinc-50 px-4 py-12">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <LogoMark animated className="size-12 text-teal-700" />
-          <p className="mt-3 text-lg font-semibold tracking-tight text-zinc-900">OpenTurnly</p>
-          <p className="mt-0.5 text-sm text-zinc-500">{t("brand.tagline")}</p>
-        </div>
-        <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-xs sm:p-8">
-          <h1 className="text-xl font-semibold text-zinc-900">{title}</h1>
-          {subtitle && <p className="mt-2 text-sm text-zinc-500">{subtitle}</p>}
-          <div className="mt-6">{children}</div>
-        </div>
-        <div className="mt-6 flex justify-center">
-          <LanguageSwitcher />
-        </div>
-      </div>
-    </div>
   );
 }

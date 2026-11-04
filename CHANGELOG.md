@@ -6,6 +6,14 @@ All notable changes to OpenTurnly are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The sign-in, setup and invitation pages are new: the form on a floating card, and beside it a
+  line and a live look at a day in the calendar, in your brand colour. The language switch moved
+  to the corner.
+- "My account" is now a page instead of a dialog, with your details, your password and your
+  language and theme. The menu on your name is down to that and signing out.
+
 ### Security
 
 - Product import: reading a size ("400 ml") from a spreadsheet cell took quadratic time on
