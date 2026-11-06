@@ -12,12 +12,14 @@ import {
 import type { TFunction } from "i18next";
 import {
   ArrowRight,
+  Calendar,
   CalendarCheck,
   Check,
   ChevronLeft,
   Clock,
   LoaderCircle,
   MapPin,
+  MessageCircle,
   RotateCcw,
   Search,
   Users,
@@ -1360,19 +1362,89 @@ function Summary({
   );
 }
 
+function formatCalDate(dateString: string) {
+  return new Date(dateString).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+}
+
+function generateIcs(appointment: BookedAppointment, businessName?: string) {
+  const start = formatCalDate(appointment.startsAt);
+  const end = formatCalDate(appointment.endsAt);
+  const title = (businessName ? `${businessName} · ` : "") + appointment.serviceName;
+  const location = [appointment.location.name, appointment.location.address].filter(Boolean).join(" · ");
+  const description = [
+    `Booking: ${appointment.serviceName}`,
+    appointment.resourceName ? `Professional: ${appointment.resourceName}` : "",
+    `Code: ${appointment.code}`,
+    location ? `Location: ${location}` : "",
+  ].filter(Boolean).join("\\n");
+
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//OpenTurnly//Booking//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:openturnly-${appointment.code}-${Date.now()}@openturnly`,
+    `DTSTAMP:${formatCalDate(new Date().toISOString())}`,
+    `DTSTART:${start}`,
+    `DTEND:${end}`,
+    `SUMMARY:${title}`,
+    `DESCRIPTION:${description}`,
+    location ? `LOCATION:${location}` : "",
+    "STATUS:CONFIRMED",
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].filter(Boolean).join("\r\n");
+}
+
 function BookingDone({
   appointment,
+  business,
   showLocation,
   t,
   locale,
   onAgain,
 }: {
   appointment: BookedAppointment;
+  business?: PublicBusiness;
   showLocation: boolean;
   t: T;
   locale: string;
   onAgain: () => void;
 }) {
+  const businessName = business?.name;
+  const gCalStart = formatCalDate(appointment.startsAt);
+  const gCalEnd = formatCalDate(appointment.endsAt);
+  const calTitle = encodeURIComponent((businessName ? `${businessName} · ` : "") + appointment.serviceName);
+  const locationText = [appointment.location.name, appointment.location.address].filter(Boolean).join(" · ");
+  const calDetails = encodeURIComponent(
+    `Booking code: ${appointment.code}\nService: ${appointment.serviceName}${appointment.resourceName ? `\nProfessional: ${appointment.resourceName}` : ""}`
+  );
+  const gCalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${calTitle}&dates=${gCalStart}/${gCalEnd}&details=${calDetails}${locationText ? `&location=${encodeURIComponent(locationText)}` : ""}`;
+  const outlookUrl = `https://outlook.live.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&startdt=${encodeURIComponent(appointment.startsAt)}&enddt=${encodeURIComponent(appointment.endsAt)}&subject=${calTitle}&body=${calDetails}${locationText ? `&location=${encodeURIComponent(locationText)}` : ""}`;
+
+  const handleDownloadIcs = () => {
+    const icsData = generateIcs(appointment, businessName);
+    const blob = new Blob([icsData], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `appointment-${appointment.code}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const rawPhone = business?.phone ?? "";
+  const cleanPhone = rawPhone.replace(/\D/g, "");
+  const locationWa = locationText ? `\nLugar: ${locationText}` : "";
+  const waMessage = encodeURIComponent(
+    `Hola ${businessName ?? ""}, he agendado mi cita para *${appointment.serviceName}* el ${appointment.date} a las ${appointment.time}.\nCódigo: *${appointment.code}*${locationWa}`
+  );
+  const waUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=${waMessage}` : null;
+
   return (
     <div className="flex flex-col items-center px-5 py-10 text-center sm:px-8">
       <span className="grid size-14 place-items-center rounded-full bg-emerald-100 text-emerald-600">
@@ -1386,6 +1458,71 @@ function BookingDone({
           {appointment.code}
         </p>
       </div>
+
+      {/* Sincronización de Calendarios */}
+      <div className="mt-6 w-full max-w-md space-y-2">
+        <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+          {t("booking.syncCalendar")}
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <a
+            href={gCalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 shadow-2xs transition-all hover:bg-zinc-50 hover:border-zinc-300 active:scale-95"
+            title="Google Calendar"
+          >
+            <Calendar className="size-4 text-[#4285F4] shrink-0" aria-hidden />
+            <span>{t("booking.addToGoogle")}</span>
+          </a>
+
+          <a
+            href={outlookUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 shadow-2xs transition-all hover:bg-zinc-50 hover:border-zinc-300 active:scale-95"
+            title="Outlook"
+          >
+            <svg className="size-4 shrink-0" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M22 6.5v11a1.5 1.5 0 0 1-1.5 1.5H8.5A1.5 1.5 0 0 1 7 17.5V16h9a1 1 0 0 0 1-1V9h3.5A1.5 1.5 0 0 1 22 10.5v-4z"
+                fill="#0078D4"
+              />
+              <rect x="2" y="5" width="13" height="14" rx="2" fill="#0078D4" />
+              <path
+                d="M8.5 14.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5zm0-1c.83 0 1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5-1.5.67-1.5 1.5.67 1.5 1.5 1.5z"
+                fill="#ffffff"
+              />
+            </svg>
+            <span>{t("booking.addToOutlook")}</span>
+          </a>
+
+          <button
+            type="button"
+            onClick={handleDownloadIcs}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 shadow-2xs transition-all hover:bg-zinc-50 hover:border-zinc-300 active:scale-95 cursor-pointer"
+            title="Apple / iCal"
+          >
+            <svg className="size-4 shrink-0 fill-zinc-900" viewBox="0 0 170 170">
+              <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.7-3.04-7.59-7.71-11.66-14.01-6.1-9.45-10.83-20.14-14.19-32.06-3.36-11.93-5.04-23.21-5.04-33.84 0-14.77 3.59-26.78 10.77-36.03 7.18-9.25 16.14-13.98 26.89-14.19 4.36 0 9.28 1.13 14.75 3.39 5.47 2.27 9.25 3.5 11.34 3.71 1.63-.21 5.58-1.52 11.87-3.92 6.28-2.41 11.65-3.5 16.1-3.29 11.83.63 21.46 5.16 28.89 13.59-10.45 6.32-15.6 15.11-15.45 26.37.15 8.94 3.63 16.48 10.45 22.61 6.82 6.13 15.02 9.61 24.6 10.45-2.2 6.52-4.96 13.25-8.28 20.19zM119.22 31.84c0-7.39 2.68-14.42 8.04-21.09 5.36-6.67 11.98-10.58 19.86-11.75.14 1.13.21 2.13.21 3 0 7.39-2.75 14.42-8.25 21.09-5.5 6.67-12.19 10.51-20.07 11.53-.14-.85-.21-1.64-.21-2.38z" />
+            </svg>
+            <span>{t("booking.downloadIcs")}</span>
+          </button>
+        </div>
+
+        {waUrl && (
+          <a
+            href={waUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-95"
+          >
+            <MessageCircle className="size-4" aria-hidden />
+            <span>{t("booking.confirmWhatsApp")}</span>
+          </a>
+        )}
+      </div>
+
       <div className="mt-7 w-full max-w-md text-left">
         <Summary
           rows={[

@@ -1954,6 +1954,11 @@ export const es = {
     whoAtTime: "¿Quién te atiende a las {{time}}?",
     onlyOneFree: "A esa hora te atiende {{name}}.",
     bookAgain: "Reservar otra cita",
+    syncCalendar: "Guardar o sincronizar cita",
+    addToGoogle: "Google",
+    addToOutlook: "Outlook",
+    downloadIcs: "Apple / iCal",
+    confirmWhatsApp: "Confirmar por WhatsApp con el negocio",
     errors: {
       busy: "Este negocio está recibiendo demasiadas reservas en este momento. Intenta en unos minutos o escríbele directamente.",
       challenge_failed: "No pudimos verificar la reserva. Inténtalo de nuevo.",
