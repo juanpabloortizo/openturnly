@@ -4,6 +4,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { type BookingGuardSettings, DEFAULT_GUARD_SETTINGS } from "./lib/booking-guard.ts";
 
+/** The WhatsApp number every business of the install uses until it connects its own. */
+export type WhatsappDefaults = {
+  phoneNumberId: string;
+  wabaId: string | null;
+  accessToken: string;
+  appSecret: string | null;
+  verifyToken: string | null;
+};
+
 export type Config = {
   isProduction: boolean;
   port: number;
@@ -25,11 +34,21 @@ export type Config = {
    * container, localhost). Off in production unless WEBHOOKS_ALLOW_PRIVATE=true.
    */
   allowPrivateWebhooks: boolean;
+  /** Set with WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN; null without them. */
+  whatsapp: WhatsappDefaults | null;
+  /** Where WhatsApp's API lives, with its version. */
+  whatsappApiUrl: string;
+  /**
+   * Sent with every message and handed back in its delivery updates, so several installs
+   * sharing one number can tell theirs apart.
+   */
+  whatsappCallbackTag: string | null;
 };
 
 const DEFAULT_DATA_DIR = fileURLToPath(new URL("../../../data", import.meta.url));
 const WEB_DIST_DIR = fileURLToPath(new URL("../../web/dist", import.meta.url));
 const VITE_DEV_ORIGIN = "http://localhost:5173";
+const WHATSAPP_API_URL = "https://graph.facebook.com/v25.0";
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const isProduction = env.NODE_ENV === "production";
@@ -58,6 +77,22 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     allowPrivateWebhooks: env.WEBHOOKS_ALLOW_PRIVATE
       ? env.WEBHOOKS_ALLOW_PRIVATE === "true"
       : !isProduction,
+    whatsapp: loadWhatsappDefaults(env),
+    whatsappApiUrl: (env.WHATSAPP_API_URL || WHATSAPP_API_URL).replace(/\/+$/, ""),
+    whatsappCallbackTag: env.WHATSAPP_CALLBACK_TAG || null,
+  };
+}
+
+function loadWhatsappDefaults(env: NodeJS.ProcessEnv): WhatsappDefaults | null {
+  const phoneNumberId = env.WHATSAPP_PHONE_NUMBER_ID;
+  const accessToken = env.WHATSAPP_ACCESS_TOKEN;
+  if (!phoneNumberId || !accessToken) return null;
+  return {
+    phoneNumberId,
+    accessToken,
+    wabaId: env.WHATSAPP_WABA_ID || null,
+    appSecret: env.WHATSAPP_APP_SECRET || null,
+    verifyToken: env.WHATSAPP_VERIFY_TOKEN || null,
   };
 }
 

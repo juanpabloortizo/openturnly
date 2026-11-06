@@ -54,8 +54,9 @@ import { BookingFormCard, FormPreview } from "./booking-form.tsx";
 import { publicUrl, useBusinessContext } from "./business.tsx";
 import { UsersSection } from "./business-access.tsx";
 import { IntegrationsTab } from "./integrations.tsx";
+import { WhatsappTab } from "./whatsapp.tsx";
 
-const TABS = ["general", "page", "integrations", "automations"] as const;
+const TABS = ["general", "page", "integrations", "whatsapp", "automations"] as const;
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -76,6 +77,7 @@ export function SettingsPage() {
           ...(admin
             ? [
                 { value: "integrations" as const, label: t("settings.tabs.integrations") },
+                { value: "whatsapp" as const, label: t("settings.tabs.whatsapp") },
                 { value: "automations" as const, label: t("settings.tabs.automations") },
               ]
             : []),
@@ -88,6 +90,7 @@ export function SettingsPage() {
         )}
         {tab === "page" && <PageTab business={business} />}
         {tab === "integrations" && admin && <IntegrationsTab />}
+        {tab === "whatsapp" && admin && <WhatsappTab />}
         {tab === "automations" && admin && <AutomationsTab />}
       </div>
     </>

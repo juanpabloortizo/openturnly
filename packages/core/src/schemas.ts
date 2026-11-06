@@ -758,6 +758,7 @@ export const AUTOMATION_FIELDS = {
     "appointment.status",
     "appointment.date",
     "appointment.time",
+    "appointment.time_text",
     "appointment.end_time",
     "appointment.weekday",
     "appointment.date_text",
@@ -814,9 +815,10 @@ const extraName = z
 
 /**
  * The steps of a flow, run in order: "webhook" sends to any URL that takes webhooks;
- * "wait" holds the steps after it back for a while.
+ * "whatsapp" sends a template to the appointment's customer; "wait" holds the steps after
+ * it back for a while.
  */
-export const AUTOMATION_ACTION_TYPES = ["webhook", "wait"] as const;
+export const AUTOMATION_ACTION_TYPES = ["webhook", "whatsapp", "wait"] as const;
 /** Steps in one flow, waits included. */
 export const MAX_AUTOMATION_ACTIONS = 10;
 /** Systems one flow can tell. */
@@ -1022,6 +1024,46 @@ export const webhookActionSchema = z
   });
 export type WebhookAction = z.output<typeof webhookActionSchema>;
 
+const WHATSAPP_TEMPLATE_NAME = /^[a-z0-9_]{1,512}$/;
+const WHATSAPP_TEMPLATE_LANGUAGE = /^[a-z]{2,3}(_[A-Za-z]{2,8})?$/;
+/** Most variables one template step can fill. */
+export const MAX_WHATSAPP_VARIABLES = 20;
+
+const whatsappTemplateName = z
+  .string()
+  .trim()
+  .refine((value) => WHATSAPP_TEMPLATE_NAME.test(value), "template_required");
+const whatsappTemplateLanguage = z
+  .string()
+  .trim()
+  .refine((value) => WHATSAPP_TEMPLATE_LANGUAGE.test(value), "template_required");
+/** One variable of a template: its name there, and the text for it. */
+const whatsappVariable = z.object({
+  name: z.string().refine((value) => /^[a-z0-9_]{1,60}$/.test(value), "invalid_value"),
+  value: z
+    .string()
+    .max(1000)
+    .superRefine((value, ctx) => {
+      for (const match of value.matchAll(PLACEHOLDER)) {
+        if (!PLACEHOLDER_NAMES.has(match[1] ?? "")) {
+          ctx.addIssue({ code: "custom", message: "unknown_field" });
+        }
+      }
+    }),
+});
+
+/** Sends an approved template to the appointment's customer, on the business's number. */
+export const whatsappActionSchema = z.object({
+  id: stepId,
+  type: z.literal("whatsapp"),
+  /** The template's name in the WhatsApp account, with the language it was approved in. */
+  template: whatsappTemplateName,
+  language: whatsappTemplateLanguage,
+  /** The text for each variable of the template, with {{field}} placeholders. */
+  variables: z.array(whatsappVariable).max(MAX_WHATSAPP_VARIABLES).default([]),
+});
+export type WhatsappAction = z.output<typeof whatsappActionSchema>;
+
 export const waitActionSchema = z.object({
   id: stepId,
   type: z.literal("wait"),
@@ -1031,6 +1073,7 @@ export type WaitAction = z.output<typeof waitActionSchema>;
 
 export const automationActionSchema = z.discriminatedUnion("type", [
   webhookActionSchema,
+  whatsappActionSchema,
   waitActionSchema,
 ]);
 export type AutomationAction = z.output<typeof automationActionSchema>;
@@ -1059,8 +1102,8 @@ export const automationSchema = z
   )
   .refine(
     (automation) => {
-      const webhooks = automation.actions.filter((action) => action.type === "webhook").length;
-      return webhooks > 0 && webhooks <= MAX_AUTOMATION_WEBHOOKS;
+      const senders = automation.actions.filter((action) => action.type !== "wait").length;
+      return senders > 0 && senders <= MAX_AUTOMATION_WEBHOOKS;
     },
     { message: "webhook_required", path: ["actions"] },
   );
@@ -1080,6 +1123,48 @@ export const automationTestSchema = z.object({
   actionId: z.string().min(1).optional(),
 });
 export type AutomationTestInput = z.input<typeof automationTestSchema>;
+
+/**
+ * A template's variables with their data filled in. WhatsApp refuses a variable that's
+ * empty or holds line breaks, so those read as a dash and a single line.
+ */
+export function whatsappVariables(
+  variables: readonly { name: string; value: string }[],
+  values: Record<string, unknown>,
+): { name: string; text: string }[] {
+  return variables.map(({ name, value }) => ({
+    name,
+    text: renderTemplate(value, values).replace(/\s+/g, " ").trim() || "-",
+  }));
+}
+
+const WHATSAPP_META_ID = /^\d{5,40}$/;
+const whatsappMetaId = z
+  .string()
+  .trim()
+  .refine((value) => WHATSAPP_META_ID.test(value), "invalid_meta_id");
+
+/** A business's own WhatsApp number. Blank secrets keep the ones already saved. */
+export const whatsappConnectionSchema = z.object({
+  phoneNumberId: whatsappMetaId,
+  wabaId: z
+    .string()
+    .trim()
+    .refine((value) => value === "" || WHATSAPP_META_ID.test(value), "invalid_meta_id")
+    .default(""),
+  accessToken: z.string().trim().max(4000).default(""),
+  appSecret: z.string().trim().max(255).default(""),
+});
+export type WhatsappConnectionInput = z.input<typeof whatsappConnectionSchema>;
+
+/** Sends one template to a chosen number, to see the connection working. */
+export const whatsappTestSchema = z.object({
+  phone: z.string().trim().min(1).max(40),
+  template: whatsappTemplateName,
+  language: whatsappTemplateLanguage,
+  variables: z.array(whatsappVariable).max(MAX_WHATSAPP_VARIABLES).default([]),
+});
+export type WhatsappTestInput = z.input<typeof whatsappTestSchema>;
 
 /** Replaces {{field}} with the field's value; unknown fields and whole groups become empty. */
 export function renderTemplate(template: string, values: Record<string, unknown>): string {

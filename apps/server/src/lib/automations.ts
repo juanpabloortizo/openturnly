@@ -13,6 +13,8 @@ import {
   toMinorUnits,
   type WebhookAction,
   type WebhookAuth,
+  type WhatsappAction,
+  whatsappVariables,
   zonedTimeToInstant,
 } from "@openturnly/core";
 import { and, asc, eq, gt, inArray, lt, lte, sql } from "drizzle-orm";
@@ -33,6 +35,7 @@ import {
   locations,
 } from "../db/schema.ts";
 import { isInternalAddress } from "./client-ip.ts";
+import type { Whatsapp, WhatsappStatusUpdate, WhatsappVariable } from "./whatsapp.ts";
 
 /** Reminders and follow-ups that came due while the server was down still go out, up to this late. */
 const GRACE_MS = 15 * 60_000;
@@ -84,6 +87,12 @@ export function automationValues(
       status: appointment.status,
       date: start.date,
       time: start.time,
+      time_text: new Intl.DateTimeFormat(business.locale, {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: "UTC",
+      }).format(new Date(`${start.date}T${start.time}:00Z`)),
       end_time: end.time,
       weekday: new Intl.DateTimeFormat(business.locale, {
         weekday: "long",
@@ -137,11 +146,26 @@ export function automationValues(
   };
 }
 
-/** The JSON an automation sends: its chosen fields and extra values, or its own JSON. */
+/** A step that sends something, as opposed to one that waits. */
+type SendAction = WebhookAction | WhatsappAction;
+
+/**
+ * What a step sends, fixed when it's queued: its chosen fields and extra values, its own
+ * JSON, or the message for the customer.
+ */
 export function buildPayload(
-  action: Pick<WebhookAction, "fields" | "extra" | "body" | "json">,
+  action: SendAction,
   values: Record<string, unknown>,
 ): Record<string, unknown> {
+  if (action.type === "whatsapp") {
+    const customer = values.customer as { phone?: string | null } | undefined;
+    return {
+      to: customer?.phone ?? null,
+      template: action.template,
+      language: action.language,
+      variables: whatsappVariables(action.variables, values),
+    };
+  }
   // A body written by hand, in the receiver's own format (checked when the flow was saved).
   if (action.body === "json")
     return renderJsonTemplate(action.json, values) as Record<string, unknown>;
@@ -149,13 +173,13 @@ export function buildPayload(
 }
 
 /**
- * The webhook steps of a flow, each with how long it waits after the flow fires: the
+ * The steps of a flow that send, each with how long it waits after the flow fires: the
  * wait steps before it added up, plus the older all-steps wait of change triggers.
  */
-export function webhookSteps(automation: Pick<Automation, "trigger" | "offsetMin" | "actions">) {
+export function sendingSteps(automation: Pick<Automation, "trigger" | "offsetMin" | "actions">) {
   const timed = automation.trigger === "before" || automation.trigger === "after";
   let waitMs = timed ? 0 : automation.offsetMin * 60_000;
-  const steps: { action: WebhookAction; delayMs: number }[] = [];
+  const steps: { action: SendAction; delayMs: number }[] = [];
   for (const action of automation.actions) {
     if (action.type === "wait") waitMs += action.minutes * 60_000;
     else steps.push({ action, delayMs: waitMs });
@@ -202,7 +226,14 @@ type SendResult = {
   durationMs: number;
   /** Start of what the receiver answered, for tests. */
   response: string | null;
+  /** WhatsApp's id for the message. */
+  messageId?: string | null;
+  /** False when trying again can't help: a number that isn't on WhatsApp, say. */
+  retry?: boolean;
 };
+
+/** How far a WhatsApp message got: updates can arrive out of order and never go back. */
+const MESSAGE_PROGRESS = ["sent", "delivered", "read"];
 
 /** How much of a receiver's answer a test shows. */
 const RESPONSE_PREVIEW_CHARS = 2_000;
@@ -214,7 +245,15 @@ export type Automations = ReturnType<typeof createAutomations>;
  * finds reminders and follow-ups as they come due, and sends the queue with retries.
  * `start()` runs it every few seconds inside the server process: no extra service.
  */
-export function createAutomations({ db, config }: { db: Db; config: Config }) {
+export function createAutomations({
+  db,
+  config,
+  whatsapp,
+}: {
+  db: Db;
+  config: Config;
+  whatsapp: Whatsapp;
+}) {
   const loadAppointment = async (appointmentId: string) => {
     const [row] = await db
       .select({
@@ -310,6 +349,33 @@ export function createAutomations({ db, config }: { db: Db; config: Config }) {
     }
   };
 
+  /** Sends a queued WhatsApp message on the business's number, or says why it can't go. */
+  const sendWhatsapp = async (
+    businessId: string,
+    payload: Record<string, unknown>,
+    callback: string,
+  ): Promise<SendResult> => {
+    const refuse = (error: string): SendResult => ({
+      ok: false,
+      status: null,
+      error,
+      durationMs: 0,
+      response: null,
+      retry: false,
+    });
+    const { to, template, language, variables } = payload;
+    if (typeof to !== "string" || !to) return refuse("whatsapp_no_phone");
+    const sender = await whatsapp.senderFor(businessId);
+    if (!sender) return refuse("whatsapp_not_connected");
+    return whatsapp.send(sender, {
+      to,
+      template: String(template),
+      language: String(language),
+      variables: (variables ?? []) as WhatsappVariable[],
+      callback,
+    });
+  };
+
   /** Sends one queued delivery and records the outcome, scheduling a retry if it failed. */
   const send = async (delivery: AutomationDelivery, automation: Automation, now: number) => {
     const skip = (error: string) =>
@@ -317,7 +383,7 @@ export function createAutomations({ db, config }: { db: Db; config: Config }) {
         .update(automationDeliveries)
         .set({ status: "skipped", error })
         .where(eq(automationDeliveries.id, delivery.id));
-    const step = webhookSteps(automation).find((item) => item.action.id === delivery.actionId);
+    const step = sendingSteps(automation).find((item) => item.action.id === delivery.actionId);
     // The step was removed from the flow after this was queued.
     if (!step) return skip("step_removed");
     const { action } = step;
@@ -338,21 +404,19 @@ export function createAutomations({ db, config }: { db: Db; config: Config }) {
         return skip("appointment_no_show");
       }
     }
-    const result = await post(
-      automation.secret,
-      action,
-      delivery.event,
-      delivery.id,
-      delivery.payload,
-    );
+    const result =
+      action.type === "whatsapp"
+        ? await sendWhatsapp(automation.businessId, delivery.payload, delivery.id)
+        : await post(automation.secret, action, delivery.event, delivery.id, delivery.payload);
     const attempts = delivery.attempts + 1;
-    const retryIn = RETRY_DELAYS_MS[attempts - 1];
+    const retryIn = result.retry === false ? undefined : RETRY_DELAYS_MS[attempts - 1];
     await db
       .update(automationDeliveries)
       .set({
         attempts,
         responseStatus: result.status,
         error: result.error,
+        ...(result.messageId ? { messageId: result.messageId, messageStatus: "sent" } : {}),
         ...(result.ok
           ? { status: "sent" as const, sentAt: new Date(now) }
           : retryIn === undefined
@@ -391,7 +455,7 @@ export function createAutomations({ db, config }: { db: Db; config: Config }) {
         const event = AUTOMATION_EVENTS[trigger];
         const values = automationValues(row.business, row, event, config.appUrl, previousStartsAt);
         const rows = list.flatMap((automation) =>
-          webhookSteps(automation).map(({ action, delayMs }) => ({
+          sendingSteps(automation).map(({ action, delayMs }) => ({
             automationId: automation.id,
             actionId: action.id,
             appointmentId,
@@ -454,7 +518,7 @@ export function createAutomations({ db, config }: { db: Db; config: Config }) {
         for (const row of due) {
           const at = before ? row.appointment.startsAt : row.appointment.endsAt;
           const values = automationValues(row.business, row, event, config.appUrl);
-          for (const { action, delayMs } of webhookSteps(automation)) {
+          for (const { action, delayMs } of sendingSteps(automation)) {
             await db
               .insert(automationDeliveries)
               .values({
@@ -494,6 +558,33 @@ export function createAutomations({ db, config }: { db: Db; config: Config }) {
       return due.length;
     },
 
+    /** Records what WhatsApp reports about messages sent from here; others are ignored. */
+    async recordWhatsappStatuses(updates: WhatsappStatusUpdate[]) {
+      for (const update of updates) {
+        const [delivery] = await db
+          .select({
+            id: automationDeliveries.id,
+            messageStatus: automationDeliveries.messageStatus,
+          })
+          .from(automationDeliveries)
+          .where(eq(automationDeliveries.messageId, update.messageId));
+        if (!delivery) continue;
+        if (update.status === "failed") {
+          await db
+            .update(automationDeliveries)
+            .set({ status: "failed", messageStatus: "failed", error: update.error })
+            .where(eq(automationDeliveries.id, delivery.id));
+          continue;
+        }
+        const reached = MESSAGE_PROGRESS.indexOf(update.status);
+        if (reached <= MESSAGE_PROGRESS.indexOf(delivery.messageStatus ?? "")) continue;
+        await db
+          .update(automationDeliveries)
+          .set({ messageStatus: update.status })
+          .where(eq(automationDeliveries.id, delivery.id));
+      }
+    },
+
     /**
      * Runs a flow right away and returns how each step answered, with one of the
      * business's appointments or example data. A saved automation's test is signed with
@@ -513,7 +604,7 @@ export function createAutomations({ db, config }: { db: Db; config: Config }) {
         ? automationValues(row.business, row, event, config.appUrl)
         : sampleValues(business, event, config.appUrl);
       // Waits are skipped: a test shows right away how each system answers.
-      const steps = webhookSteps({ ...flow, offsetMin: 0 })
+      const steps = sendingSteps({ ...flow, offsetMin: 0 })
         .map((step) => step.action)
         .filter((action) => !actionId || action.id === actionId);
       const secret = flow.secret ?? `whsec_test_${randomBytes(12).toString("base64url")}`;
@@ -521,14 +612,27 @@ export function createAutomations({ db, config }: { db: Db; config: Config }) {
         steps.map(async (action) => {
           // A hand-written body goes exactly as written; a test says so in a header instead.
           const payload =
-            action.body === "json"
-              ? buildPayload(action, values)
-              : { ...buildPayload(action, values), test: true };
+            action.type === "webhook" && action.body !== "json"
+              ? { ...buildPayload(action, values), test: true }
+              : buildPayload(action, values);
           const deliveryId = randomUUID();
-          const result = await post(secret, action, event, deliveryId, payload, {
-            readResponse: true,
-            test: true,
-          });
+          // A message is real even in a test, so it only goes to a real appointment's customer:
+          // the example data's phone number is made up and could be somebody's.
+          const result =
+            action.type === "webhook"
+              ? await post(secret, action, event, deliveryId, payload, {
+                  readResponse: true,
+                  test: true,
+                })
+              : row
+                ? await sendWhatsapp(business.id, payload, deliveryId)
+                : {
+                    ok: false,
+                    status: null,
+                    error: "whatsapp_needs_appointment",
+                    durationMs: 0,
+                    response: null,
+                  };
           if (flow.id) {
             await db.insert(automationDeliveries).values({
               id: deliveryId,
@@ -543,6 +647,8 @@ export function createAutomations({ db, config }: { db: Db; config: Config }) {
               error: result.error,
               nextAttemptAt: new Date(),
               sentAt: result.ok ? new Date() : null,
+              messageId: "messageId" in result ? (result.messageId ?? null) : null,
+              messageStatus: "messageId" in result && result.messageId && result.ok ? "sent" : null,
             });
           }
           return { actionId: action.id, event, payload, ...result };
@@ -574,7 +680,7 @@ export function createAutomations({ db, config }: { db: Db; config: Config }) {
 }
 
 /** The same example appointment the builder previews: in 3 days at 10:00, Ana's haircut. */
-function sampleValues(business: Business, event: string, appUrl: string) {
+export function sampleValues(business: Business, event: string, appUrl: string) {
   const startsAt = new Date(
     zonedTimeToInstant(addDays(todayIn(business.timezone), 3), 10 * 60, business.timezone),
   );

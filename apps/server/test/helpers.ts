@@ -42,6 +42,9 @@ export async function createTestApp(
     trustProxy?: boolean;
     allowPrivateWebhooks?: boolean;
     webDistDir?: string;
+    whatsapp?: Config["whatsapp"];
+    whatsappApiUrl?: string;
+    whatsappCallbackTag?: string;
   } = {},
 ) {
   const config: Config = {
@@ -56,6 +59,9 @@ export async function createTestApp(
     trustProxy: options.trustProxy ?? false,
     bookingGuard: { ...TEST_GUARD_SETTINGS, ...options.bookingGuard },
     allowPrivateWebhooks: options.allowPrivateWebhooks ?? true,
+    whatsapp: options.whatsapp ?? null,
+    whatsappApiUrl: options.whatsappApiUrl ?? "http://127.0.0.1:1",
+    whatsappCallbackTag: options.whatsappCallbackTag ?? null,
   };
   const { db } = await openEmbeddedPostgres();
   const auth = createAuth({ db, config });

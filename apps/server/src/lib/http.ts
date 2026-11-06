@@ -9,6 +9,7 @@ import type { Business } from "../db/schema.ts";
 import type { BusinessAccess } from "./access.ts";
 import type { Automations } from "./automations.ts";
 import type { BookingGuard } from "./booking-guard.ts";
+import type { Whatsapp } from "./whatsapp.ts";
 
 export type Deps = {
   db: Db;
@@ -16,6 +17,7 @@ export type Deps = {
   config: Config;
   guard: BookingGuard;
   automations: Automations;
+  whatsapp: Whatsapp;
 };
 export type AppEnv = { Variables: { user: SessionUser | null } };
 /** Routes under /api/businesses/:businessId, after access was checked. */

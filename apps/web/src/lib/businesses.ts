@@ -7,6 +7,8 @@ import type {
   MemberCreateInput,
   MemberUpdateInput,
   SampleBusinessInput,
+  WhatsappConnectionInput,
+  WhatsappTestInput,
 } from "@openturnly/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -19,6 +21,8 @@ import {
   type Business,
   type Member,
   type PendingInvitation,
+  type WhatsappOverview,
+  type WhatsappTemplate,
 } from "./api.ts";
 
 const keys = {
@@ -140,6 +144,59 @@ export function useApiKeyMutations(id: string) {
       mutationFn: (keyId: string) =>
         api(`/api/businesses/${id}/api-keys/${keyId}`, { method: "DELETE" }),
       onSuccess: refresh,
+    }),
+  };
+}
+
+const whatsappKey = (id: string) => [...keys.one(id), "whatsapp"] as const;
+
+export function useWhatsapp(id: string) {
+  return useQuery({
+    queryKey: whatsappKey(id),
+    queryFn: () => api<WhatsappOverview>(`/api/businesses/${id}/whatsapp`),
+  });
+}
+
+type WhatsappTemplates = {
+  source: "own" | "default" | null;
+  templates: WhatsappTemplate[];
+  error: string | null;
+};
+
+export function useWhatsappTemplates(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: [...whatsappKey(id), "templates"],
+    enabled,
+    queryFn: () => api<WhatsappTemplates>(`/api/businesses/${id}/whatsapp/templates`),
+  });
+}
+
+export function useWhatsappMutations(id: string) {
+  const queryClient = useQueryClient();
+  const refresh = () => queryClient.invalidateQueries({ queryKey: whatsappKey(id) });
+  const base = `/api/businesses/${id}/whatsapp`;
+  return {
+    save: useMutation({
+      mutationFn: (body: WhatsappConnectionInput) =>
+        api<WhatsappOverview>(base, { method: "PUT", body }),
+      onSuccess: refresh,
+    }),
+    connect: useMutation({
+      mutationFn: () => api<WhatsappOverview>(`${base}/connect`, { method: "POST" }),
+      onSuccess: refresh,
+    }),
+    remove: useMutation({
+      mutationFn: () => api<WhatsappOverview>(base, { method: "DELETE" }),
+      onSuccess: refresh,
+    }),
+    prepareTemplates: useMutation({
+      mutationFn: () =>
+        api<{ created: number; error: string | null }>(`${base}/templates`, { method: "POST" }),
+      onSuccess: refresh,
+    }),
+    test: useMutation({
+      mutationFn: (body: WhatsappTestInput) =>
+        api<{ ok: boolean; error: string | null }>(`${base}/test`, { method: "POST", body }),
     }),
   };
 }

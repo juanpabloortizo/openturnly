@@ -127,7 +127,7 @@ business get 401.
 A business's automations (`automations`) are a trigger (an appointment is created, moved
 or cancelled, or some time before or after it) plus an ordered list of steps (`actions`,
 jsonb): up to five webhook steps, each POSTing appointment data to a URL, and wait steps
-that delay the webhook steps after them (`webhookSteps` in `src/lib/automations.ts` adds
+that delay the webhook steps after them (`sendingSteps` in `src/lib/automations.ts` adds
 the waits up). Each webhook step gets its own delivery, so one failing receiver doesn't
 hold back the others. Every send is a row in `automation_deliveries`, which is both
 the queue and the history: changes queue a row right away; a loop inside the server
@@ -136,6 +136,11 @@ process (every 15 seconds, no extra service) finds reminders and follow-ups that
 sends what's pending, retrying after 1, 5 and 30 minutes. Deliveries are signed with the
 automation's secret (`X-OpenTurnly-Signature`, HMAC-SHA256 of `<timestamp>.<body>`), and
 destinations inside the server's network are refused unless `WEBHOOKS_ALLOW_PRIVATE=true`.
+
+A step can also send a WhatsApp template (`src/lib/whatsapp.ts`). It goes through the same
+queue and history, on the business's own number when one is connected and otherwise on the
+install's. Credentials are encrypted with `SECRET` (`src/lib/secrets.ts`), and WhatsApp's
+delivery updates arrive at `/api/public/whatsapp` signed with the app secret.
 
 ## Validation and errors
 
