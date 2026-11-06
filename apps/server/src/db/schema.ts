@@ -949,11 +949,47 @@ export const automations = pgTable(
   (table) => [index("automations_business_id_idx").on(table.businessId)],
 );
 
+export const WHATSAPP_STATUSES = ["disconnected", "connected", "error"] as const;
+export type WhatsappStatus = (typeof WHATSAPP_STATUSES)[number];
+
+/**
+ * A business's own WhatsApp number. Without one that's connected, its messages go out on
+ * the install's number, when there is one. The token and the app secret are encrypted
+ * (see lib/secrets.ts) and never leave the server.
+ */
+export const whatsappConnections = pgTable(
+  "whatsapp_connections",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    phoneNumberId: text("phone_number_id").notNull(),
+    wabaId: text("waba_id"),
+    encryptedAccessToken: text("encrypted_access_token"),
+    encryptedAppSecret: text("encrypted_app_secret"),
+    /** WhatsApp proves it's calling with this when the webhook is set up. */
+    webhookVerifyToken: text("webhook_verify_token").notNull(),
+    status: text("status", { enum: WHATSAPP_STATUSES }).notNull().default("disconnected"),
+    /** The number and the name WhatsApp reported when it was last verified. */
+    phoneNumber: text("phone_number"),
+    displayName: text("display_name"),
+    lastError: text("last_error"),
+    lastConnectedAt: instant("last_connected_at"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("whatsapp_connections_business_id_idx").on(table.businessId),
+    index("whatsapp_connections_phone_number_id_idx").on(table.phoneNumberId),
+  ],
+);
+
 /** "skipped": not sent because the step or the appointment no longer applies. */
 export const DELIVERY_STATUSES = ["pending", "sent", "failed", "skipped"] as const;
 
 /**
- * Every POST an automation makes: the queue the sender works through (with retries) and
+ * Every send an automation makes: the queue the sender works through (with retries) and
  * the history shown to the business. `dedupeKey` keeps a reminder from going out twice.
  */
 export const automationDeliveries = pgTable(
@@ -978,10 +1014,14 @@ export const automationDeliveries = pgTable(
     responseStatus: integer("response_status"),
     error: text("error"),
     sentAt: instant("sent_at"),
+    /** WhatsApp's id for the message, and how far it got: sent, delivered, read or failed. */
+    messageId: text("message_id"),
+    messageStatus: text("message_status"),
     createdAt: createdAt(),
   },
   (table) => [
     uniqueIndex("automation_deliveries_dedupe_idx").on(table.dedupeKey),
+    index("automation_deliveries_message_id_idx").on(table.messageId),
     index("automation_deliveries_due_idx").on(table.status, table.nextAttemptAt),
     index("automation_deliveries_automation_idx").on(table.automationId, table.createdAt),
   ],
@@ -1002,3 +1042,4 @@ export type GiftCard = typeof giftCards.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type Automation = typeof automations.$inferSelect;
 export type AutomationDelivery = typeof automationDeliveries.$inferSelect;
+export type WhatsappConnection = typeof whatsappConnections.$inferSelect;

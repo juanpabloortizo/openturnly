@@ -20,6 +20,9 @@ import {
   WEBHOOK_METHODS,
   type WebhookAction,
   type WebhookAuth,
+  WHATSAPP_VARIABLE_DATA,
+  type WhatsappAction,
+  whatsappVariables,
 } from "@openturnly/core";
 import type { TFunction } from "i18next";
 import {
@@ -30,6 +33,7 @@ import {
   Clock,
   Flag,
   type LucideIcon,
+  MessageCircle,
   Play,
   Plus,
   RefreshCw,
@@ -51,6 +55,7 @@ import {
   useAutomationDeliveries,
   useAutomationMutations,
   useAutomations,
+  useWhatsappTemplates,
 } from "../../lib/businesses.ts";
 import { useAppointments } from "../../lib/catalog.ts";
 import { cn } from "../../lib/cn.ts";
@@ -63,6 +68,7 @@ import {
   MESSAGE,
   newWait,
   newWebhook,
+  newWhatsapp,
   StatusBadge,
   sampleValues,
   splitOffset,
@@ -168,7 +174,7 @@ function Builder({ automation, template }: { automation: Automation | null; temp
   /** "trigger", a step's id, or null for the flow's overview. */
   const [selected, setSelected] = useState<string | null>(() =>
     template
-      ? (draft.actions.find((action) => action.type === "webhook")?.id ?? null)
+      ? (draft.actions.find((action) => action.type !== "wait")?.id ?? null)
       : automation
         ? null
         : "trigger",
@@ -177,7 +183,7 @@ function Builder({ automation, template }: { automation: Automation | null; temp
   const [results, setResults] = useState<Record<string, AutomationStepResult>>({});
   const [testWith, setTestWith] = useState("");
   const [testOpen, setTestOpen] = useState(false);
-  const webhooks = draft.actions.filter((action) => action.type === "webhook").length;
+  const webhooks = draft.actions.filter((action) => action.type !== "wait").length;
   const listPath = "../settings?tab=automations";
 
   /** The draft as the API wants it, or null (with the problem shown) if it isn't ready. */
@@ -192,7 +198,7 @@ function Builder({ automation, template }: { automation: Automation | null; temp
       trigger: draft.trigger,
       offsetMin: isTimed(draft.trigger) ? draft.offsetMin : 0,
       actions: draft.actions.map((action) =>
-        action.type === "wait"
+        action.type !== "webhook"
           ? action
           : {
               ...action,
@@ -403,13 +409,15 @@ function Builder({ automation, template }: { automation: Automation | null; temp
                   onAdd={(step) => insertAt(index, step)}
                 />
                 <FlowNode
-                  icon={action.type === "wait" ? Clock : Webhook}
-                  tone={action.type === "wait" ? "wait" : "webhook"}
-                  eyebrow={
+                  icon={
                     action.type === "wait"
-                      ? t("automations.builder.wait")
-                      : t("automations.builder.webhook")
+                      ? Clock
+                      : action.type === "whatsapp"
+                        ? MessageCircle
+                        : Webhook
                   }
+                  tone={action.type === "wait" ? "wait" : "webhook"}
+                  eyebrow={t(`automations.builder.kinds.${action.type}`)}
                   title={
                     action.type === "wait" ? duration(t, action.minutes) : stepTitle(t, action)
                   }
@@ -460,6 +468,21 @@ function Builder({ automation, template }: { automation: Automation | null; temp
               onChange={(minutes) => updateStep(selectedStep.id, { minutes })}
               onClose={() => setSelected(null)}
             />
+          ) : selectedStep?.type === "whatsapp" ? (
+            <WhatsappPanel
+              key={selectedStep.id}
+              index={selectedIndex}
+              step={selectedStep}
+              trigger={draft.trigger ?? "created"}
+              errors={errors}
+              result={results[selectedStep.id]}
+              testing={test.isPending}
+              testWith={testWith}
+              onTestWith={setTestWith}
+              onChange={(change) => updateStep(selectedStep.id, change)}
+              onTest={() => runTest(selectedStep.id)}
+              onClose={() => setSelected(null)}
+            />
           ) : selectedStep?.type === "webhook" ? (
             <StepPanel
               key={selectedStep.id}
@@ -496,8 +519,17 @@ function AddStep({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useClickOutside(open, [ref], () => setOpen(false));
-  const options: { key: "webhook" | "wait"; icon: LucideIcon; make: () => AutomationAction }[] = [
-    ...(webhooksLeft ? [{ key: "webhook" as const, icon: Webhook, make: () => newWebhook() }] : []),
+  const options: {
+    key: "webhook" | "whatsapp" | "wait";
+    icon: LucideIcon;
+    make: () => AutomationAction;
+  }[] = [
+    ...(webhooksLeft
+      ? [
+          { key: "whatsapp" as const, icon: MessageCircle, make: () => newWhatsapp() },
+          { key: "webhook" as const, icon: Webhook, make: () => newWebhook() },
+        ]
+      : []),
     { key: "wait", icon: Clock, make: () => newWait() },
   ];
   return (
@@ -1380,8 +1412,160 @@ function StepSection({
 }
 
 /** Why a send failed, in plain words when the network error is a known one. */
+/** A message step: which approved template, and the data for its variables. */
+function WhatsappPanel({
+  index,
+  step,
+  trigger,
+  errors,
+  result,
+  testing,
+  testWith,
+  onTestWith,
+  onChange,
+  onTest,
+  onClose,
+}: {
+  index: number;
+  step: WhatsappAction;
+  trigger: AutomationTrigger;
+  errors: FieldErrors;
+  result: AutomationStepResult | undefined;
+  testing: boolean;
+  testWith: string;
+  onTestWith: (id: string) => void;
+  onChange: (change: Partial<WhatsappAction>) => void;
+  onTest: () => void;
+  onClose: () => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const { business } = useBusinessContext();
+  const templates = useWhatsappTemplates(business.id, true);
+  const sample = useMemo(
+    () => sampleValues(business, AUTOMATION_EVENTS[trigger], i18n.resolvedLanguage ?? "es"),
+    [business, trigger, i18n.resolvedLanguage],
+  );
+  const usable = (templates.data?.templates ?? []).filter(
+    (item) => item.status === "APPROVED" && item.usable,
+  );
+  const current = usable.find(
+    (item) => item.name === step.template && item.language === step.language,
+  );
+  const choose = (value: string) => {
+    const [name = "", language = ""] = value.split(":");
+    const template = usable.find((item) => item.name === name && item.language === language);
+    onChange({
+      template: name,
+      language,
+      variables: (template?.variables ?? []).map((variable) => ({
+        name: variable,
+        value: WHATSAPP_VARIABLE_DATA[variable] ?? "",
+      })),
+    });
+  };
+  const preview = useMemo(() => {
+    if (!current) return "";
+    const filled = new Map(
+      whatsappVariables(step.variables, sample).map(({ name, text }) => [name, text]),
+    );
+    return current.body.replace(
+      /\{\{\s*([a-z0-9_]+)\s*\}\}/g,
+      (_, name) => filled.get(name) ?? "-",
+    );
+  }, [current, step.variables, sample]);
+  const templateError = errors[`actions.${index}.template`] ?? errors[`actions.${index}.language`];
+
+  return (
+    <div className="space-y-5">
+      <PanelTitle
+        icon={MessageCircle}
+        title={t("automations.whatsapp.title")}
+        hint={t("automations.whatsapp.hint")}
+        onClose={onClose}
+      />
+      {templates.isPending ? (
+        <Spinner />
+      ) : templates.data?.source === null ? (
+        <p className="text-[13px] text-amber-700">{t("automations.whatsapp.notConnected")}</p>
+      ) : templates.data?.error ? (
+        <p className="text-[13px] text-red-600">{templates.data.error}</p>
+      ) : usable.length === 0 ? (
+        <p className="text-[13px] text-amber-700">{t("automations.whatsapp.noTemplates")}</p>
+      ) : null}
+      <Field
+        label={t("automations.whatsapp.template")}
+        error={fieldMessage(t, "template", templateError)}
+      >
+        {(props) => (
+          <Select
+            {...props}
+            value={step.template ? `${step.template}:${step.language}` : ""}
+            onChange={(event) => choose(event.target.value)}
+          >
+            <option value="">{t("automations.whatsapp.choose")}</option>
+            {step.template && !current && (
+              <option value={`${step.template}:${step.language}`}>
+                {step.template} ({step.language})
+              </option>
+            )}
+            {usable.map((item) => (
+              <option key={`${item.name}:${item.language}`} value={`${item.name}:${item.language}`}>
+                {item.name} ({item.language})
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+      {step.variables.map((variable, position) => (
+        <Field
+          key={variable.name}
+          label={variable.name}
+          error={fieldMessage(
+            t,
+            "variable",
+            errors[`actions.${index}.variables.${position}.value`],
+          )}
+        >
+          {(props) => (
+            <TemplateEditor
+              {...props}
+              rows={1}
+              value={variable.value}
+              sample={sample}
+              onChange={(value) =>
+                onChange({
+                  variables: step.variables.map((item, at) =>
+                    at === position ? { ...item, value } : item,
+                  ),
+                })
+              }
+            />
+          )}
+        </Field>
+      ))}
+      {preview && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2.5 text-[13px] whitespace-pre-line text-zinc-800">
+          {preview}
+        </div>
+      )}
+      <p className="text-xs text-zinc-500">{t("automations.whatsapp.recipient")}</p>
+      <div className="space-y-2">
+        <TestAppointmentPicker value={testWith} onChange={onTestWith} />
+        <Button variant="secondary" disabled={testing || !testWith} onClick={onTest}>
+          <Play className="size-4" aria-hidden />
+          {t("automations.whatsapp.test")}
+        </Button>
+      </div>
+      {result && <StepResult result={result} />}
+    </div>
+  );
+}
+
 function failureReason(t: TFunction, error: string | null): string {
   if (!error) return "";
+  if (error === "whatsapp_no_phone") return t("automations.result.whatsappNoPhone");
+  if (error === "whatsapp_not_connected") return t("automations.result.whatsappNotConnected");
+  if (error === "whatsapp_needs_appointment") return t("automations.result.whatsappNeedsBooking");
   if (error === "internal_address") return t("automations.result.internalAddress");
   if (error === "https_required") return t("automations.result.httpsRequired");
   if (error === "timeout") return t("automations.result.timeout");
@@ -1559,7 +1743,13 @@ function SavedTools({ automation }: { automation: Automation }) {
                 </span>
                 <StatusBadge
                   status={delivery.status}
-                  label={delivery.responseStatus ? String(delivery.responseStatus) : undefined}
+                  label={
+                    delivery.messageStatus === "delivered" || delivery.messageStatus === "read"
+                      ? t(`automations.messageStatus.${delivery.messageStatus}`)
+                      : delivery.responseStatus
+                        ? String(delivery.responseStatus)
+                        : undefined
+                  }
                 />
               </li>
             ))}

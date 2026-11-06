@@ -471,9 +471,44 @@ export type AutomationDelivery = {
   error: string | null;
   createdAt: string;
   sentAt: string | null;
+  /** How far a WhatsApp message got: sent, delivered, read or failed. */
+  messageStatus: string | null;
 };
 
-/** A flow: when it fires and the steps it runs (for now, POSTs to other tools). */
+/** A business's own WhatsApp number. The token and app secret never come back. */
+export type WhatsappConnection = {
+  id: string;
+  phoneNumberId: string;
+  wabaId: string | null;
+  status: "disconnected" | "connected" | "error";
+  phoneNumber: string | null;
+  displayName: string | null;
+  lastError: string | null;
+  lastConnectedAt: string | null;
+  hasAccessToken: boolean;
+  hasAppSecret: boolean;
+  webhookUrl: string;
+  webhookVerifyToken: string;
+};
+
+/** Which number the business's messages go out on, and what it could use instead. */
+export type WhatsappOverview = {
+  active: "own" | "default" | null;
+  default: { phoneNumber: string | null; displayName: string | null } | null;
+  connection: WhatsappConnection | null;
+};
+
+export type WhatsappTemplate = {
+  name: string;
+  language: string;
+  status: string;
+  category: string | null;
+  body: string;
+  variables: string[];
+  usable: boolean;
+};
+
+/** A flow: when it fires and the steps it runs: messages and POSTs to other tools. */
 export type Automation = {
   id: string;
   name: string;

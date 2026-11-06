@@ -5,6 +5,7 @@ import {
   todayIn,
   type WaitAction,
   type WebhookAction,
+  type WhatsappAction,
 } from "@openturnly/core";
 import type { TFunction } from "i18next";
 import {
@@ -62,6 +63,7 @@ export function stepTitle(t: TFunction, action: AutomationAction) {
   if (action.type === "wait") {
     return t("automations.timing.wait", { time: duration(t, action.minutes) });
   }
+  if (action.type === "whatsapp") return action.template || t("automations.step.untitled");
   try {
     return new URL(action.url).host;
   } catch {
@@ -82,6 +84,10 @@ export function newWebhook(message = ""): WebhookAction {
     fields: null,
     extra: message ? [{ name: MESSAGE, value: message }] : [],
   };
+}
+
+export function newWhatsapp(): WhatsappAction {
+  return { id: crypto.randomUUID(), type: "whatsapp", template: "", language: "", variables: [] };
 }
 
 export function newWait(minutes = 60): WaitAction {
@@ -112,6 +118,7 @@ export function sampleValues(business: Business, event: string, language: string
       status: "confirmed",
       date,
       time: "10:00",
+      time_text: language === "en" ? "10:00 AM" : "10:00 a. m.",
       end_time: "10:30",
       weekday: formatDay(date, language).split(",")[0],
       date_text: formatDay(date, language),

@@ -211,6 +211,13 @@
       "when": 1793716443266,
       "tag": "0029_sample_business",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1793929871716,
+      "tag": "0030_whatsapp_connections",
+      "breakpoints": true
     }
   ]
 }

@@ -8,7 +8,10 @@ A workflow is built on a canvas that starts empty: add the **trigger**
 (what has to happen to an appointment), then use the **+** buttons between nodes to add
 steps:
 
-- **Notify another system**: sends the appointment's data to a webhook (up to 5 per flow).
+- **Send WhatsApp**: messages the appointment's customer with an approved template
+  ([docs/whatsapp.md](docs/whatsapp.md)).
+- **Notify another system**: sends the appointment's data to a webhook (up to 5 sending steps
+  per flow).
 - **Wait**: pauses the flow; the steps after it go out once that time has passed.
 
 So "booked → notify the bot → wait 1 day → notify the CRM" is one flow. Click a node to set
@@ -17,7 +20,7 @@ from a template (reminder 1 hour before, new booking notice, review request) and
 paste the address of the system that receives it.
 
 **Test** sends the event right away to every step (waits are skipped), using one of your
-appointments or example data, and each node shows how its system answered (status, time,
+appointments or example data (WhatsApp steps need a real appointment), and each node shows how its system answered (status, time,
 its response and the data sent). Tests work before saving too, and never change any
 appointment.
 
@@ -82,7 +85,7 @@ an example of each, or search them all.
 | Group | Data |
 | --- | --- |
 | — | `event` (`appointment.created`, `appointment.reminder`…) |
-| `appointment` | `code`, `status`, `date` (YYYY-MM-DD), `time`, `end_time`, `weekday`, `date_text`, `starts_at` and `ends_at` (ISO, UTC), `service`, `duration_minutes`, `professional`, `price` (a number), `price_text`, `booked_via` (`online`, `admin` or the AI agent's key name), `answers`, `previous_date`, `previous_time` |
+| `appointment` | `code`, `status`, `date` (YYYY-MM-DD), `time`, `time_text` (10:00 a. m.), `end_time`, `weekday`, `date_text`, `starts_at` and `ends_at` (ISO, UTC), `service`, `duration_minutes`, `professional`, `price` (a number), `price_text`, `booked_via` (`online`, `admin` or the AI agent's key name), `answers`, `previous_date`, `previous_time` |
 | `customer` | `name`, `first_name`, `last_name`, `phone` (+573001234567), `phone_digits` (573001234567, as WhatsApp APIs expect), `email` |
 | `business` | `name`, `phone`, `address`, `booking_page`, `time_zone` |
 

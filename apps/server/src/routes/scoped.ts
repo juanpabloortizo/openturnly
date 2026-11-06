@@ -19,6 +19,7 @@ import { reportRoutes } from "./reports.ts";
 import { saleRoutes } from "./sales.ts";
 import { serviceRoutes } from "./services.ts";
 import { stockRoutes } from "./stock.ts";
+import { whatsappRoutes } from "./whatsapp.ts";
 
 /**
  * What a professional may call: their own agenda (the appointment routes narrow it to
@@ -46,12 +47,13 @@ export function businessScopedRoutes(deps: Deps) {
   return new Hono<BusinessEnv>()
     .use(async (c, next) => {
       const businessId = c.req.param("businessId") ?? "";
-      // An AI agent's admin key works like an admin, except for managing keys themselves.
+      // An AI agent's admin key works like an admin, except for managing keys themselves and
+      // the business's WhatsApp credentials.
       const token = bearerToken(c);
       const { business, access } = token
         ? await findBusinessForKey(deps.db, token, businessId)
         : await findBusinessWithAccess(deps.db, requireUser(c), businessId);
-      if (access.apiKey && /^\/api\/businesses\/[^/]+\/api-keys/.test(c.req.path)) {
+      if (access.apiKey && /^\/api\/businesses\/[^/]+\/(api-keys|whatsapp)/.test(c.req.path)) {
         throw apiError(403, "forbidden");
       }
       if (access.role === "professional") {
@@ -81,5 +83,6 @@ export function businessScopedRoutes(deps: Deps) {
     .route("/images", imageRoutes(deps))
     .route("/api-keys", apiKeyRoutes(deps))
     .route("/automations", automationRoutes(deps))
+    .route("/whatsapp", whatsappRoutes(deps))
     .route("/", hoursRoutes(deps));
 }
