@@ -2,6 +2,8 @@ import {
   type AutomationAction,
   type AutomationTrigger,
   addDays,
+  EMAIL_TEMPLATE_NAMES,
+  type EmailAction,
   todayIn,
   type WaitAction,
   type WebhookAction,
@@ -64,6 +66,7 @@ export function stepTitle(t: TFunction, action: AutomationAction) {
     return t("automations.timing.wait", { time: duration(t, action.minutes) });
   }
   if (action.type === "whatsapp") return action.template || t("automations.step.untitled");
+  if (action.type === "email") return t(`automations.email.templates.${action.template}`);
   try {
     return new URL(action.url).host;
   } catch {
@@ -88,6 +91,17 @@ export function newWebhook(message = ""): WebhookAction {
 
 export function newWhatsapp(): WhatsappAction {
   return { id: crypto.randomUUID(), type: "whatsapp", template: "", language: "", variables: [] };
+}
+
+export function newEmail(language: "es" | "en"): EmailAction {
+  return {
+    id: crypto.randomUUID(),
+    type: "email",
+    template: EMAIL_TEMPLATE_NAMES[0],
+    language,
+    subject: "",
+    body: "",
+  };
 }
 
 export function newWait(minutes = 60): WaitAction {

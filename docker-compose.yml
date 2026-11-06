@@ -23,6 +23,12 @@ services:
       WHATSAPP_WABA_ID: ${WHATSAPP_WABA_ID:-}
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      EMAIL_FOOTER: ${EMAIL_FOOTER:-}
       # Signs sessions. Leave empty to generate one on first start (saved in /data).
       SECRET: ${SECRET:-}
     volumes:

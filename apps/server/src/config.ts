@@ -13,6 +13,17 @@ export type WhatsappDefaults = {
   verifyToken: string | null;
 };
 
+/** The email account every business of the install uses until it connects its own. */
+export type EmailDefaults = {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  fromEmail: string;
+  /** A last line for emails sent on this account. */
+  footer: string | null;
+};
+
 export type Config = {
   isProduction: boolean;
   port: number;
@@ -36,6 +47,8 @@ export type Config = {
   allowPrivateWebhooks: boolean;
   /** Set with WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN; null without them. */
   whatsapp: WhatsappDefaults | null;
+  /** Set with SMTP_HOST, SMTP_USER, SMTP_PASSWORD and EMAIL_FROM; null without them. */
+  email: EmailDefaults | null;
   /** Where WhatsApp's API lives, with its version. */
   whatsappApiUrl: string;
   /**
@@ -78,8 +91,22 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       ? env.WEBHOOKS_ALLOW_PRIVATE === "true"
       : !isProduction,
     whatsapp: loadWhatsappDefaults(env),
+    email: loadEmailDefaults(env),
     whatsappApiUrl: (env.WHATSAPP_API_URL || WHATSAPP_API_URL).replace(/\/+$/, ""),
     whatsappCallbackTag: env.WHATSAPP_CALLBACK_TAG || null,
+  };
+}
+
+function loadEmailDefaults(env: NodeJS.ProcessEnv): EmailDefaults | null {
+  const { SMTP_HOST: host, SMTP_USER: username, SMTP_PASSWORD: password, EMAIL_FROM } = env;
+  if (!host || !username || !password || !EMAIL_FROM) return null;
+  return {
+    host,
+    port: Number(env.SMTP_PORT || 587),
+    username,
+    password,
+    fromEmail: EMAIL_FROM,
+    footer: env.EMAIL_FOOTER || null,
   };
 }
 

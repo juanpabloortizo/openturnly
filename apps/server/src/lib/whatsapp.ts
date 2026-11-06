@@ -5,7 +5,6 @@ import {
   whatsappTemplateComponents,
   whatsappVariableNames,
 } from "@openturnly/core";
-import { eq } from "drizzle-orm";
 import type { Config } from "../config.ts";
 import type { Db } from "../db/client.ts";
 import { type WhatsappConnection, whatsappConnections } from "../db/schema.ts";
@@ -17,7 +16,7 @@ const PROFILE_TTL_MS = 60 * 60_000;
 /** WhatsApp's "too many, try later" answers, which come as ordinary refusals. */
 const RATE_LIMIT_CODES = new Set([4, 80007, 130429, 131048, 131056, 133016]);
 
-/** The number a message goes out on, and which of the two kinds it is. */
+/** The number a message goes out on, and where it was set. */
 export type WhatsappSender = {
   source: "own" | "default";
   phoneNumberId: string;
@@ -124,7 +123,7 @@ async function graph(
 
 export type Whatsapp = ReturnType<typeof createWhatsapp>;
 
-/** Talks to WhatsApp for the businesses: whose number to use, and sending on it. */
+/** Talks to WhatsApp for the install: which number to use, and sending on it. */
 export function createWhatsapp({ db, config }: { db: Db; config: Config }) {
   let profile: { at: number; value: WhatsappProfile } | null = null;
 
@@ -136,11 +135,8 @@ export function createWhatsapp({ db, config }: { db: Db; config: Config }) {
       accessToken: config.whatsapp.accessToken,
     };
 
-  const findConnection = async (businessId: string) => {
-    const [connection] = await db
-      .select()
-      .from(whatsappConnections)
-      .where(eq(whatsappConnections.businessId, businessId));
+  const findConnection = async () => {
+    const [connection] = await db.select().from(whatsappConnections).limit(1);
     return connection ?? null;
   };
 
@@ -175,7 +171,7 @@ export function createWhatsapp({ db, config }: { db: Db; config: Config }) {
       };
     },
 
-    /** The install's number as WhatsApp shows it, to tell the businesses what they'd use. */
+    /** The environment's number as WhatsApp shows it, to tell the owner what's in use. */
     async defaultProfile(): Promise<WhatsappProfile | null> {
       if (!config.whatsapp) return null;
       if (profile && Date.now() - profile.at < PROFILE_TTL_MS) return profile.value;
@@ -190,9 +186,9 @@ export function createWhatsapp({ db, config }: { db: Db; config: Config }) {
       return value;
     },
 
-    /** The business's own connected number, or the install's, or null. */
-    async senderFor(businessId: string): Promise<WhatsappSender | null> {
-      const own = await findConnection(businessId);
+    /** The number connected in the install, or the one from the environment, or null. */
+    async sender(): Promise<WhatsappSender | null> {
+      const own = await findConnection();
       const accessToken = readSecret(own?.encryptedAccessToken ?? null);
       if (own?.status === "connected" && accessToken) {
         return {

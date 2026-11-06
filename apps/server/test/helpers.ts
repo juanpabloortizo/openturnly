@@ -45,6 +45,7 @@ export async function createTestApp(
     whatsapp?: Config["whatsapp"];
     whatsappApiUrl?: string;
     whatsappCallbackTag?: string;
+    email?: Config["email"];
   } = {},
 ) {
   const config: Config = {
@@ -62,6 +63,7 @@ export async function createTestApp(
     whatsapp: options.whatsapp ?? null,
     whatsappApiUrl: options.whatsappApiUrl ?? "http://127.0.0.1:1",
     whatsappCallbackTag: options.whatsappCallbackTag ?? null,
+    email: options.email ?? null,
   };
   const { db } = await openEmbeddedPostgres();
   const auth = createAuth({ db, config });

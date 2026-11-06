@@ -4,10 +4,13 @@ import { isIP } from "node:net";
 import {
   AUTOMATION_EVENTS,
   addDays,
+  type EmailAction,
+  emailTemplate,
   fieldsBody,
   formatPrice,
   fromMinorUnits,
   instantToZoned,
+  renderEmailText,
   renderJsonTemplate,
   todayIn,
   toMinorUnits,
@@ -35,6 +38,7 @@ import {
   locations,
 } from "../db/schema.ts";
 import { isInternalAddress } from "./client-ip.ts";
+import type { Email } from "./email.ts";
 import type { Whatsapp, WhatsappStatusUpdate, WhatsappVariable } from "./whatsapp.ts";
 
 /** Reminders and follow-ups that came due while the server was down still go out, up to this late. */
@@ -147,7 +151,7 @@ export function automationValues(
 }
 
 /** A step that sends something, as opposed to one that waits. */
-type SendAction = WebhookAction | WhatsappAction;
+type SendAction = WebhookAction | WhatsappAction | EmailAction;
 
 /**
  * What a step sends, fixed when it's queued: its chosen fields and extra values, its own
@@ -164,6 +168,18 @@ export function buildPayload(
       template: action.template,
       language: action.language,
       variables: whatsappVariables(action.variables, values),
+    };
+  }
+  if (action.type === "email") {
+    const customer = values.customer as { email?: string | null } | undefined;
+    const ready = emailTemplate(action.template);
+    return {
+      to: customer?.email ?? null,
+      // Both go in the queue: which one is sent depends on the account it goes out on.
+      subject: renderEmailText(action.subject, values),
+      body: renderEmailText(action.body, values),
+      readySubject: renderEmailText(ready?.subject[action.language] ?? "", values),
+      readyBody: renderEmailText(ready?.body[action.language] ?? "", values),
     };
   }
   // A body written by hand, in the receiver's own format (checked when the flow was saved).
@@ -249,10 +265,12 @@ export function createAutomations({
   db,
   config,
   whatsapp,
+  email,
 }: {
   db: Db;
   config: Config;
   whatsapp: Whatsapp;
+  email: Email;
 }) {
   const loadAppointment = async (appointmentId: string) => {
     const [row] = await db
@@ -349,9 +367,8 @@ export function createAutomations({
     }
   };
 
-  /** Sends a queued WhatsApp message on the business's number, or says why it can't go. */
+  /** Sends a queued WhatsApp message, or says why it can't go. */
   const sendWhatsapp = async (
-    businessId: string,
     payload: Record<string, unknown>,
     callback: string,
   ): Promise<SendResult> => {
@@ -365,7 +382,7 @@ export function createAutomations({
     });
     const { to, template, language, variables } = payload;
     if (typeof to !== "string" || !to) return refuse("whatsapp_no_phone");
-    const sender = await whatsapp.senderFor(businessId);
+    const sender = await whatsapp.sender();
     if (!sender) return refuse("whatsapp_not_connected");
     return whatsapp.send(sender, {
       to,
@@ -374,6 +391,40 @@ export function createAutomations({
       variables: (variables ?? []) as WhatsappVariable[],
       callback,
     });
+  };
+
+  /** Sends a queued email, or says why it can't go. */
+  const sendEmail = async (
+    business: Pick<Business, "name" | "email">,
+    payload: Record<string, unknown>,
+  ): Promise<SendResult> => {
+    const refuse = (error: string): SendResult => ({
+      ok: false,
+      status: null,
+      error,
+      durationMs: 0,
+      response: null,
+      retry: false,
+    });
+    const to = payload.to;
+    if (typeof to !== "string" || !to) return refuse("email_no_address");
+    const sender = await email.sender();
+    if (!sender) return refuse("email_not_connected");
+    // The account from the environment only carries the ready-made texts: when an install
+    // shares it between clients, its reputation is everybody's.
+    const own = sender.source === "own";
+    return email.send(sender, {
+      to,
+      fromName: business.name,
+      replyTo: business.email,
+      subject: String((own && payload.subject) || payload.readySubject),
+      body: String((own && payload.body) || payload.readyBody),
+    });
+  };
+
+  const findBusiness = async (id: string) => {
+    const [business] = await db.select().from(businesses).where(eq(businesses.id, id));
+    return business;
   };
 
   /** Sends one queued delivery and records the outcome, scheduling a retry if it failed. */
@@ -404,10 +455,14 @@ export function createAutomations({
         return skip("appointment_no_show");
       }
     }
+    const business = await findBusiness(automation.businessId);
+    if (!business) return skip("business_removed");
     const result =
       action.type === "whatsapp"
-        ? await sendWhatsapp(automation.businessId, delivery.payload, delivery.id)
-        : await post(automation.secret, action, delivery.event, delivery.id, delivery.payload);
+        ? await sendWhatsapp(delivery.payload, delivery.id)
+        : action.type === "email"
+          ? await sendEmail(business, delivery.payload)
+          : await post(automation.secret, action, delivery.event, delivery.id, delivery.payload);
     const attempts = delivery.attempts + 1;
     const retryIn = result.retry === false ? undefined : RETRY_DELAYS_MS[attempts - 1];
     await db
@@ -617,22 +672,24 @@ export function createAutomations({
               : buildPayload(action, values);
           const deliveryId = randomUUID();
           // A message is real even in a test, so it only goes to a real appointment's customer:
-          // the example data's phone number is made up and could be somebody's.
+          // the example data's phone number and address are made up and could be somebody's.
           const result =
             action.type === "webhook"
               ? await post(secret, action, event, deliveryId, payload, {
                   readResponse: true,
                   test: true,
                 })
-              : row
-                ? await sendWhatsapp(business.id, payload, deliveryId)
-                : {
+              : !row
+                ? {
                     ok: false,
                     status: null,
                     error: "whatsapp_needs_appointment",
                     durationMs: 0,
                     response: null,
-                  };
+                  }
+                : action.type === "email"
+                  ? await sendEmail(business, payload)
+                  : await sendWhatsapp(payload, deliveryId);
           if (flow.id) {
             await db.insert(automationDeliveries).values({
               id: deliveryId,

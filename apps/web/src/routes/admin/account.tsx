@@ -6,6 +6,7 @@ import {
   type LucideIcon,
   Monitor,
   Moon,
+  Send,
   Sun,
   UserRound,
 } from "lucide-react";
@@ -124,6 +125,17 @@ export function AccountMenu({ user, collapsed }: { user: User; collapsed: boolea
                 </span>
               </span>
             </div>
+            {user.role === "owner" && (
+              <MenuItem
+                icon={Send}
+                onClick={() => {
+                  setOpen(false);
+                  navigate("/admin/channels");
+                }}
+              >
+                {t("channels.title")}
+              </MenuItem>
+            )}
           </div>
           <div className="mt-1.5 flex items-center border-t border-zinc-100 pt-1.5">
             <div className="min-w-0 flex-1">

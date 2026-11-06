@@ -137,10 +137,11 @@ sends what's pending, retrying after 1, 5 and 30 minutes. Deliveries are signed 
 automation's secret (`X-OpenTurnly-Signature`, HMAC-SHA256 of `<timestamp>.<body>`), and
 destinations inside the server's network are refused unless `WEBHOOKS_ALLOW_PRIVATE=true`.
 
-A step can also send a WhatsApp template (`src/lib/whatsapp.ts`). It goes through the same
-queue and history, on the business's own number when one is connected and otherwise on the
-install's. Credentials are encrypted with `SECRET` (`src/lib/secrets.ts`), and WhatsApp's
-delivery updates arrive at `/api/public/whatsapp` signed with the app secret.
+A step can also message the customer, by WhatsApp (`src/lib/whatsapp.ts`) or email
+(`src/lib/email.ts`), through the same queue and history. Both are set once per install in
+**Channels** (`src/routes/channels.ts`, owner only), with the environment as a fallback.
+Credentials are encrypted with `SECRET` (`src/lib/secrets.ts`), and WhatsApp's delivery updates
+arrive at `/api/public/whatsapp` signed with the app secret.
 
 ## Validation and errors
 

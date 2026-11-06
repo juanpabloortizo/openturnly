@@ -1,4 +1,5 @@
 export * from "./availability.ts";
+export * from "./email.ts";
 export * from "./money.ts";
 export * from "./phone.ts";
 export * from "./schemas.ts";

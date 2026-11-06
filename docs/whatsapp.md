@@ -5,13 +5,16 @@ confirmation when they book. Messages go through
 [WhatsApp's Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api), straight from
 your server, with no service in between.
 
-## Two ways to send
+## Who sets it up
 
-- **The install's number.** Whoever runs the install sets one number in the environment, and
-  every business uses it from the first day, with nothing to configure.
-- **A business's own number.** In **Settings → WhatsApp**, a business pastes the details of
-  its own app. Once WhatsApp accepts them, its messages go out from that number. Removing it
-  goes back to the install's number.
+WhatsApp belongs to whoever runs the install, not to one business: it's set in **Channels**,
+in the account menu, and every business sends through it. There are two ways:
+
+- **A number in the panel.** Paste the details of your app in **Channels → WhatsApp**. Once
+  WhatsApp accepts them, messages go out from that number.
+- **A number in the environment.** Set it in `.env` and it's used from the first day, with
+  nothing to configure. A number connected in the panel takes over from it, and removing that
+  one goes back.
 
 Saved details only take over after **Save and connect** verifies them with WhatsApp, so a
 wrong token never stops messages that were already going out.
@@ -37,12 +40,12 @@ again.
 Sending works without it. With it, the workflow's history shows whether each message was
 delivered or read, and a message WhatsApp couldn't deliver shows as failed with the reason.
 
-**Settings → WhatsApp** shows the callback URL and the verify token of the business's number.
+**Channels → WhatsApp** shows the callback URL and the verify token of the connected number.
 Paste them into the app, under WhatsApp → Configuration, and subscribe to the `messages`
 field. Each call is checked against the app secret, and anything about another number is
 ignored. Meta only sends real events once the app is published.
 
-The install's number has one address, `/api/public/whatsapp/webhook`, with the
+The number in the environment has its own address, `/api/public/whatsapp/webhook`, with the
 `WHATSAPP_VERIFY_TOKEN` you chose.
 
 ## Templates
@@ -52,10 +55,9 @@ step picks one, and fills each variable with the appointment's data, using the s
 placeholders as webhooks (`{{customer.first_name}}`). Named variables and numbered ones both
 work, as long as they're in the text alone.
 
-**Create appointment templates** in **Settings → WhatsApp** sends a confirmation, a reminder,
-a rescheduling notice and a cancellation notice for review, in Spanish and English. Approval usually takes minutes. Businesses
-on the install's number use the templates of that account: only whoever runs the install can
-create them.
+**Create appointment templates** in **Channels → WhatsApp** sends a confirmation, a reminder,
+a rescheduling notice and a cancellation notice for review, in Spanish and English. Approval usually takes minutes. On a number from the
+environment, templates are managed outside the panel.
 
 Empty values are sent as `-`, because WhatsApp refuses them, and line breaks become spaces.
 
@@ -63,23 +65,23 @@ Empty values are sent as `-`, because WhatsApp refuses them, and line breaks bec
 
 A test in a workflow only goes to a real appointment you choose, never to the example data:
 the message is real, and that example number could be somebody's. To try a number without an
-appointment, use **Send test** in **Settings → WhatsApp**.
+appointment, use **Send test** in **Channels → WhatsApp**.
 
 ## How sending behaves
 
 Messages go through the same queue as webhooks, with the same history. WhatsApp's limits and
 temporary failures are retried after 1, 5 and 30 minutes. Anything retrying can't fix, like a
 template that doesn't exist or a number that isn't on WhatsApp, fails at once. A customer
-without a phone number, or a business without a connected number, shows as failed with the
+without a phone number, or an install without a connected number, shows as failed with the
 reason.
 
 ## Settings
 
-Set these in `.env` for the install's number:
+Set these in `.env` for a number in the environment:
 
 | Variable | What it is |
 | --- | --- |
-| `WHATSAPP_PHONE_NUMBER_ID` | The number's ID. With the token, it turns the install's number on |
+| `WHATSAPP_PHONE_NUMBER_ID` | The number's ID. With the token, it turns this number on |
 | `WHATSAPP_ACCESS_TOKEN` | The permanent token |
 | `WHATSAPP_WABA_ID` | The WhatsApp Business Account ID, to list its templates |
 | `WHATSAPP_APP_SECRET` | The app secret, to check the webhook's calls |

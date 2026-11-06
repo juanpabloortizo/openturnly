@@ -218,6 +218,13 @@
       "when": 1793929871716,
       "tag": "0030_whatsapp_connections",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793938205730,
+      "tag": "0031_channels_per_install",
+      "breakpoints": true
     }
   ]
 }
