@@ -125,6 +125,8 @@ updates, read the [self-hosting guide](docs/self-hosting.md), or follow the
   automation platform, a CRM, a WhatsApp bot or your own API ([docs/workflows.md](docs/workflows.md)).
 - **WhatsApp reminders and confirmations** on your own number, through WhatsApp's Cloud API
   ([docs/whatsapp.md](docs/whatsapp.md)).
+- **Email reminders and confirmations** through any provider that takes SMTP
+  ([docs/email.md](docs/email.md)).
 - **Protection against fake bookings**: self-hosted proof of work (ALTCHA), rate limits and
   a surge brake per business. No third-party service needed.
 
@@ -134,8 +136,7 @@ See the [changelog](CHANGELOG.md) for what each release brings.
 
 Next on the list:
 
-- Confirmation and reminder emails with `.ics`, and cancel or reschedule links without an
-  account.
+- `.ics` files in confirmation emails, and cancel or reschedule links without an account.
 
 Not planned: online payments, marketing tools. Workflows and the MCP server let you connect
 those from other tools.

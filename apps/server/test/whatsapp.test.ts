@@ -5,7 +5,7 @@ import { addDays, todayIn, weekdayOf } from "@openturnly/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { decryptSecret, encryptSecret } from "../src/lib/secrets.ts";
 import { whatsappStatusUpdates } from "../src/lib/whatsapp.ts";
-import { createBusiness, createTestApp, setUpOwner } from "./helpers.ts";
+import { addMember, createBusiness, createTestApp, setUpOwner } from "./helpers.ts";
 
 const servers: { close: () => void }[] = [];
 afterEach(() => {
@@ -182,20 +182,20 @@ describe("WhatsApp", () => {
     expect(delivery.messageId).toBeTruthy();
   });
 
-  it("moves to the business's own number once it's connected, and back when removed", async () => {
-    const { owner, base, book, messageOnBooking, engine, whatsapp } = await shop({
+  it("moves to the number connected in the panel, and back when removed", async () => {
+    const { owner, book, messageOnBooking, engine, whatsapp } = await shop({
       installNumber: true,
     });
     await messageOnBooking();
 
-    const saved = await owner.put(`${base}/whatsapp`, OWN_NUMBER);
+    const saved = await owner.put(`/api/channels/whatsapp`, OWN_NUMBER);
     expect(saved.status).toBe(200);
     // Saved isn't enough: only verified credentials take over.
     expect(saved.body.active).toBe("default");
     expect(JSON.stringify(saved.body)).not.toContain(OWN_NUMBER.accessToken);
     expect(JSON.stringify(saved.body)).not.toContain(OWN_NUMBER.appSecret);
 
-    const connected = await owner.post(`${base}/whatsapp/connect`);
+    const connected = await owner.post(`/api/channels/whatsapp/connect`);
     expect(connected.body.active).toBe("own");
     expect(connected.body.connection).toMatchObject({
       status: "connected",
@@ -210,33 +210,24 @@ describe("WhatsApp", () => {
     expect(whatsapp.sent.at(-1)?.url).toBe(`/${OWN_NUMBER.phoneNumberId}/messages`);
     expect(whatsapp.sent.at(-1)?.authorization).toBe(`Bearer ${OWN_NUMBER.accessToken}`);
 
-    const removed = await owner.delete(`${base}/whatsapp`);
+    const removed = await owner.delete(`/api/channels/whatsapp`);
     expect(removed.body).toMatchObject({ active: "default", connection: null });
   });
 
   it("keeps saved secrets when the form is sent again without them", async () => {
-    const { owner, base } = await shop();
-    await owner.put(`${base}/whatsapp`, OWN_NUMBER);
-    await owner.put(`${base}/whatsapp`, { phoneNumberId: OWN_NUMBER.phoneNumberId });
-    const connected = await owner.post(`${base}/whatsapp/connect`);
+    const { owner } = await shop();
+    await owner.put(`/api/channels/whatsapp`, OWN_NUMBER);
+    await owner.put(`/api/channels/whatsapp`, { phoneNumberId: OWN_NUMBER.phoneNumberId });
+    const connected = await owner.post(`/api/channels/whatsapp/connect`);
     expect(connected.body.connection.status).toBe("connected");
   });
 
   it("reports credentials WhatsApp refuses and keeps using the install's number", async () => {
-    const { owner, base } = await shop({ installNumber: true });
-    await owner.put(`${base}/whatsapp`, { ...OWN_NUMBER, accessToken: "bad-token" });
-    const { body } = await owner.post(`${base}/whatsapp/connect`);
+    const { owner } = await shop({ installNumber: true });
+    await owner.put(`/api/channels/whatsapp`, { ...OWN_NUMBER, accessToken: "bad-token" });
+    const { body } = await owner.post(`/api/channels/whatsapp/connect`);
     expect(body.connection).toMatchObject({ status: "error", lastError: "Invalid token" });
     expect(body.active).toBe("default");
-  });
-
-  it("doesn't let two businesses share one number", async () => {
-    const { owner, base } = await shop();
-    await owner.put(`${base}/whatsapp`, OWN_NUMBER);
-    const other = await createBusiness(owner, { name: "Otra", slug: "otra-barberia" });
-    const { status, body } = await owner.put(`/api/businesses/${other.id}/whatsapp`, OWN_NUMBER);
-    expect(status).toBe(400);
-    expect(body.error.fields).toEqual({ phoneNumberId: "whatsapp_number_taken" });
   });
 
   it("skips nothing silently: without a number the delivery fails and says why", async () => {
@@ -291,12 +282,12 @@ describe("WhatsApp", () => {
   });
 
   it("only lets a business create templates on its own account", async () => {
-    const { owner, base, whatsapp } = await shop({ installNumber: true });
-    expect((await owner.post(`${base}/whatsapp/templates`)).status).toBe(403);
+    const { owner, whatsapp } = await shop({ installNumber: true });
+    expect((await owner.post(`/api/channels/whatsapp/templates`)).status).toBe(403);
 
-    await owner.put(`${base}/whatsapp`, OWN_NUMBER);
-    await owner.post(`${base}/whatsapp/connect`);
-    const { body } = await owner.post(`${base}/whatsapp/templates`);
+    await owner.put(`/api/channels/whatsapp`, OWN_NUMBER);
+    await owner.post(`/api/channels/whatsapp/connect`);
+    const { body } = await owner.post(`/api/channels/whatsapp/templates`);
     // Four templates in two languages, except the one the account already has.
     expect(body).toMatchObject({ created: 7, error: null });
     expect(whatsapp.sent.map((item) => item.url)).toEqual(
@@ -320,8 +311,8 @@ describe("WhatsApp", () => {
   });
 
   it("keeps numbered variables working for older templates", async () => {
-    const { owner, base, whatsapp } = await shop({ installNumber: true });
-    await owner.post(`${base}/whatsapp/test`, {
+    const { owner, whatsapp } = await shop({ installNumber: true });
+    await owner.post(`/api/channels/whatsapp/test`, {
       phone: "+57 300 765 4321",
       template: "older",
       language: "es",
@@ -354,8 +345,8 @@ describe("WhatsApp", () => {
   });
 
   it("sends a test message to the number asked for", async () => {
-    const { owner, base, whatsapp } = await shop({ installNumber: true });
-    const { body } = await owner.post(`${base}/whatsapp/test`, {
+    const { owner, whatsapp } = await shop({ installNumber: true });
+    const { body } = await owner.post(`/api/channels/whatsapp/test`, {
       phone: "+57 300 765 4321",
       template: "hello_world",
       language: "en_US",
@@ -367,15 +358,22 @@ describe("WhatsApp", () => {
     });
   });
 
-  it("keeps access keys away from the credentials", async () => {
-    const { app, owner, base } = await shop();
+  it("is only for whoever runs the install", async () => {
+    const { app, owner, base, business } = await shop();
     const key = await owner.post(`${base}/api-keys`, { name: "Bot", kind: "admin" });
-    const response = await app.app.fetch(
-      new Request(`http://localhost${base}/whatsapp`, {
+    const withKey = await app.app.fetch(
+      new Request("http://localhost/api/channels/whatsapp", {
         headers: { authorization: `Bearer ${key.body.token}` },
       }),
     );
-    expect(response.status).toBe(403);
+    expect(withKey.status).toBe(401);
+    expect((await app.client().get("/api/channels/whatsapp")).status).toBe(401);
+
+    const admin = await addMember(app, owner, business.id, "admin@example.com");
+    expect((await admin.get("/api/channels/whatsapp")).status).toBe(403);
+    expect((await admin.put("/api/channels/whatsapp", OWN_NUMBER)).status).toBe(403);
+    // Building a flow only needs to know what's connected.
+    expect((await admin.get(`${base}/channels`)).body).toEqual({ whatsapp: null, email: null });
   });
 
   describe("webhook", () => {
@@ -488,9 +486,9 @@ describe("WhatsApp", () => {
     });
 
     it("serves each business's own number at its own address", async () => {
-      const { app, owner, base } = await shop();
-      await owner.put(`${base}/whatsapp`, OWN_NUMBER);
-      const { body } = await owner.get(`${base}/whatsapp`);
+      const { app, owner } = await shop();
+      await owner.put(`/api/channels/whatsapp`, OWN_NUMBER);
+      const { body } = await owner.get(`/api/channels/whatsapp`);
       const { id, webhookUrl, webhookVerifyToken } = body.connection;
       expect(webhookUrl).toBe(`http://localhost:3000/api/public/whatsapp/${id}/webhook`);
 

@@ -953,37 +953,51 @@ export const WHATSAPP_STATUSES = ["disconnected", "connected", "error"] as const
 export type WhatsappStatus = (typeof WHATSAPP_STATUSES)[number];
 
 /**
- * A business's own WhatsApp number. Without one that's connected, its messages go out on
- * the install's number, when there is one. The token and the app secret are encrypted
- * (see lib/secrets.ts) and never leave the server.
+ * The install's own WhatsApp number, set by its owner: every business sends on it. Without
+ * one that's connected, messages go out on the number from the environment, when there is
+ * one. The token and the app secret are encrypted (see lib/secrets.ts) and never leave the
+ * server. There's one row at most.
  */
-export const whatsappConnections = pgTable(
-  "whatsapp_connections",
-  {
-    id: id(),
-    businessId: text("business_id")
-      .notNull()
-      .references(() => businesses.id, { onDelete: "cascade" }),
-    phoneNumberId: text("phone_number_id").notNull(),
-    wabaId: text("waba_id"),
-    encryptedAccessToken: text("encrypted_access_token"),
-    encryptedAppSecret: text("encrypted_app_secret"),
-    /** WhatsApp proves it's calling with this when the webhook is set up. */
-    webhookVerifyToken: text("webhook_verify_token").notNull(),
-    status: text("status", { enum: WHATSAPP_STATUSES }).notNull().default("disconnected"),
-    /** The number and the name WhatsApp reported when it was last verified. */
-    phoneNumber: text("phone_number"),
-    displayName: text("display_name"),
-    lastError: text("last_error"),
-    lastConnectedAt: instant("last_connected_at"),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
-  (table) => [
-    uniqueIndex("whatsapp_connections_business_id_idx").on(table.businessId),
-    index("whatsapp_connections_phone_number_id_idx").on(table.phoneNumberId),
-  ],
-);
+export const whatsappConnections = pgTable("whatsapp_connections", {
+  id: id(),
+  phoneNumberId: text("phone_number_id").notNull(),
+  wabaId: text("waba_id"),
+  encryptedAccessToken: text("encrypted_access_token"),
+  encryptedAppSecret: text("encrypted_app_secret"),
+  /** WhatsApp proves it's calling with this when the webhook is set up. */
+  webhookVerifyToken: text("webhook_verify_token").notNull(),
+  status: text("status", { enum: WHATSAPP_STATUSES }).notNull().default("disconnected"),
+  /** The number and the name WhatsApp reported when it was last verified. */
+  phoneNumber: text("phone_number"),
+  displayName: text("display_name"),
+  lastError: text("last_error"),
+  lastConnectedAt: instant("last_connected_at"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const EMAIL_STATUSES = ["disconnected", "connected", "error"] as const;
+
+/**
+ * The install's own email account, set by its owner: every business sends on it. Without
+ * one that's connected, emails go out on the account from the environment, when there is
+ * one. The password is encrypted (see lib/secrets.ts) and never leaves the server. There's
+ * one row at most.
+ */
+export const emailConnections = pgTable("email_connections", {
+  id: id(),
+  provider: text("provider").notNull(),
+  host: text("host").notNull(),
+  port: integer("port").notNull(),
+  username: text("username").notNull(),
+  encryptedPassword: text("encrypted_password"),
+  fromEmail: text("from_email").notNull(),
+  status: text("status", { enum: EMAIL_STATUSES }).notNull().default("disconnected"),
+  lastError: text("last_error"),
+  lastConnectedAt: instant("last_connected_at"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
 
 /** "skipped": not sent because the step or the appointment no longer applies. */
 export const DELIVERY_STATUSES = ["pending", "sent", "failed", "skipped"] as const;
@@ -1043,3 +1057,4 @@ export type Product = typeof products.$inferSelect;
 export type Automation = typeof automations.$inferSelect;
 export type AutomationDelivery = typeof automationDeliveries.$inferSelect;
 export type WhatsappConnection = typeof whatsappConnections.$inferSelect;
+export type EmailConnection = typeof emailConnections.$inferSelect;

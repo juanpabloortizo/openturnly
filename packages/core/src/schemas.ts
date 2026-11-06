@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { hoursProblem } from "./availability.ts";
+import { EMAIL_PORTS, EMAIL_PROVIDER_IDS, EMAIL_TEMPLATE_NAMES } from "./email.ts";
 import { normalizePhone } from "./phone.ts";
 import { checkSlug } from "./slug.ts";
 import { addDays, isDateString, isTimeString } from "./time.ts";
@@ -815,10 +816,10 @@ const extraName = z
 
 /**
  * The steps of a flow, run in order: "webhook" sends to any URL that takes webhooks;
- * "whatsapp" sends a template to the appointment's customer; "wait" holds the steps after
+ * "whatsapp" and "email" message the appointment's customer; "wait" holds the steps after
  * it back for a while.
  */
-export const AUTOMATION_ACTION_TYPES = ["webhook", "whatsapp", "wait"] as const;
+export const AUTOMATION_ACTION_TYPES = ["webhook", "whatsapp", "email", "wait"] as const;
 /** Steps in one flow, waits included. */
 export const MAX_AUTOMATION_ACTIONS = 10;
 /** Systems one flow can tell. */
@@ -1064,6 +1065,33 @@ export const whatsappActionSchema = z.object({
 });
 export type WhatsappAction = z.output<typeof whatsappActionSchema>;
 
+/** Text someone can write with {{field}} placeholders. */
+const placeholderText = (max: number) =>
+  z
+    .string()
+    .max(max)
+    .superRefine((value, ctx) => {
+      for (const match of value.matchAll(PLACEHOLDER)) {
+        if (!PLACEHOLDER_NAMES.has(match[1] ?? "")) {
+          ctx.addIssue({ code: "custom", message: "unknown_field" });
+        }
+      }
+    });
+
+/**
+ * Emails the appointment's customer with a ready-made text. A business sending through its
+ * own account can reword it; empty keeps the ready-made subject and body.
+ */
+export const emailActionSchema = z.object({
+  id: stepId,
+  type: z.literal("email"),
+  template: z.enum(EMAIL_TEMPLATE_NAMES),
+  language: z.enum(LOCALES),
+  subject: placeholderText(200).default(""),
+  body: placeholderText(5000).default(""),
+});
+export type EmailAction = z.output<typeof emailActionSchema>;
+
 export const waitActionSchema = z.object({
   id: stepId,
   type: z.literal("wait"),
@@ -1074,6 +1102,7 @@ export type WaitAction = z.output<typeof waitActionSchema>;
 export const automationActionSchema = z.discriminatedUnion("type", [
   webhookActionSchema,
   whatsappActionSchema,
+  emailActionSchema,
   waitActionSchema,
 ]);
 export type AutomationAction = z.output<typeof automationActionSchema>;
@@ -1165,6 +1194,45 @@ export const whatsappTestSchema = z.object({
   variables: z.array(whatsappVariable).max(MAX_WHATSAPP_VARIABLES).default([]),
 });
 export type WhatsappTestInput = z.input<typeof whatsappTestSchema>;
+
+const EMAIL_HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
+
+/** A business's own email account. A blank password keeps the one already saved. */
+export const emailConnectionSchema = z.object({
+  provider: z.enum(EMAIL_PROVIDER_IDS),
+  host: z
+    .string()
+    .trim()
+    .refine((value) => EMAIL_HOST.test(value), "invalid_email_host"),
+  port: z
+    .number()
+    .int()
+    .refine((value) => (EMAIL_PORTS as readonly number[]).includes(value), "invalid_email_port"),
+  username: z.string().trim().min(1).max(320),
+  password: z.string().trim().max(1000).default(""),
+  fromEmail: z.email().max(320),
+});
+export type EmailConnectionInput = z.input<typeof emailConnectionSchema>;
+
+/** Sends one ready-made email to a chosen address, to see the account working. */
+export const emailTestSchema = z.object({
+  to: z.email().max(320),
+  template: z.enum(EMAIL_TEMPLATE_NAMES),
+  language: z.enum(LOCALES),
+});
+export type EmailTestInput = z.input<typeof emailTestSchema>;
+
+/**
+ * Fills a text line by line, leaving out each line with a field that has no value, so an
+ * email never says "Address:" and nothing after it.
+ */
+export function renderEmailText(text: string, values: Record<string, unknown>): string {
+  const lines = text.split("\n").filter((line) => {
+    const fields = [...line.matchAll(PLACEHOLDER)];
+    return fields.every((match) => renderTemplate(match[0], values).trim() !== "");
+  });
+  return renderTemplate(lines.join("\n"), values);
+}
 
 /** Replaces {{field}} with the field's value; unknown fields and whole groups become empty. */
 export function renderTemplate(template: string, values: Record<string, unknown>): string {

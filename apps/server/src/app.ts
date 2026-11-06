@@ -9,9 +9,11 @@ import { secureHeaders } from "hono/secure-headers";
 import { createAutomations } from "./lib/automations.ts";
 import { createBookingGuard } from "./lib/booking-guard.ts";
 import { hasProxyHeaders, withClientIp } from "./lib/client-ip.ts";
+import { createEmail } from "./lib/email.ts";
 import type { AppEnv, Deps } from "./lib/http.ts";
 import { createWhatsapp } from "./lib/whatsapp.ts";
 import { businessRoutes } from "./routes/businesses.ts";
+import { channelRoutes } from "./routes/channels.ts";
 import { invitationRoutes } from "./routes/invitations.ts";
 import { mcpRoutes } from "./routes/mcp.ts";
 import { meRoutes } from "./routes/me.ts";
@@ -24,8 +26,9 @@ import { whatsappWebhookRoutes } from "./routes/whatsapp.ts";
 export function createApp({ db, auth, config }: Pick<Deps, "db" | "auth" | "config">) {
   const guard = createBookingGuard({ db, secret: config.secret, settings: config.bookingGuard });
   const whatsapp = createWhatsapp({ db, config });
-  const automations = createAutomations({ db, config, whatsapp });
-  const deps: Deps = { db, auth, config, guard, automations, whatsapp };
+  const email = createEmail({ db, config });
+  const automations = createAutomations({ db, config, whatsapp, email });
+  const deps: Deps = { db, auth, config, guard, automations, whatsapp, email };
   const app = new Hono<AppEnv>();
 
   if (!config.isProduction && process.env.NODE_ENV !== "test") app.use(logger());
@@ -87,6 +90,7 @@ export function createApp({ db, auth, config }: Pick<Deps, "db" | "auth" | "conf
   app.route("/api/meta", metaRoutes());
   app.route("/api/businesses", businessRoutes(deps));
   app.route("/api/businesses/:businessId", businessScopedRoutes(deps));
+  app.route("/api/channels", channelRoutes(deps));
   app.route("/api/invitations", invitationRoutes(deps));
   app.route("/api/public/whatsapp", whatsappWebhookRoutes(deps));
   app.route("/api/public", publicRoutes(deps));

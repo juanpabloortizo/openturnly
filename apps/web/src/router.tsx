@@ -34,6 +34,7 @@ export const router = createBrowserRouter([
       { path: "businesses", element: <Navigate to="/admin" replace /> },
       { path: "businesses/new", lazy: page("NewBusinessPage") },
       { path: "account", lazy: page("AccountPage") },
+      { path: "channels", lazy: page("ChannelsPage") },
       // Links from before short ids: /admin/businesses/<uuid>/… → /admin/<short id>/….
       { path: "businesses/:businessId/*", lazy: page("LegacyBusinessRedirect") },
       {

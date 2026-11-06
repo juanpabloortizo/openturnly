@@ -475,7 +475,7 @@ export type AutomationDelivery = {
   messageStatus: string | null;
 };
 
-/** A business's own WhatsApp number. The token and app secret never come back. */
+/** The install's own WhatsApp number. The token and app secret never come back. */
 export type WhatsappConnection = {
   id: string;
   phoneNumberId: string;
@@ -491,11 +491,32 @@ export type WhatsappConnection = {
   webhookVerifyToken: string;
 };
 
-/** Which number the business's messages go out on, and what it could use instead. */
+/** Which number messages go out on, and the one from the environment, if any. */
 export type WhatsappOverview = {
   active: "own" | "default" | null;
   default: { phoneNumber: string | null; displayName: string | null } | null;
   connection: WhatsappConnection | null;
+};
+
+/** The install's own email account. The password never comes back. */
+export type EmailConnection = {
+  id: string;
+  provider: string;
+  host: string;
+  port: number;
+  username: string;
+  fromEmail: string;
+  status: "disconnected" | "connected" | "error";
+  lastError: string | null;
+  lastConnectedAt: string | null;
+  hasPassword: boolean;
+};
+
+/** Which account emails go out on, and the address from the environment, if any. */
+export type EmailOverview = {
+  active: "own" | "default" | null;
+  default: string | null;
+  connection: EmailConnection | null;
 };
 
 export type WhatsappTemplate = {

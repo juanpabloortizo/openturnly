@@ -7,12 +7,16 @@ import {
   type AutomationField,
   type AutomationTrigger,
   automationSchema,
+  EMAIL_TEMPLATE_NAMES,
+  type EmailAction,
+  emailTemplate,
   fieldsBody,
   instantToZoned,
   jsonTemplateProblem,
   MAX_AUTOMATION_ACTIONS,
   MAX_AUTOMATION_WEBHOOKS,
   nestFields,
+  renderEmailText,
   renderJsonTemplate,
   renderTemplate,
   WEBHOOK_AUTH_TYPES,
@@ -33,6 +37,7 @@ import {
   Clock,
   Flag,
   type LucideIcon,
+  Mail,
   MessageCircle,
   Play,
   Plus,
@@ -55,9 +60,9 @@ import {
   useAutomationDeliveries,
   useAutomationMutations,
   useAutomations,
-  useWhatsappTemplates,
 } from "../../lib/businesses.ts";
 import { useAppointments } from "../../lib/catalog.ts";
+import { useBusinessChannels, useBusinessWhatsappTemplates } from "../../lib/channels.ts";
 import { cn } from "../../lib/cn.ts";
 import { formatDay } from "../../lib/format.ts";
 import { errorMessage, type FieldErrors, fieldMessage, validate } from "../../lib/forms.ts";
@@ -66,6 +71,7 @@ import {
   duration,
   isTimed,
   MESSAGE,
+  newEmail,
   newWait,
   newWebhook,
   newWhatsapp,
@@ -414,7 +420,9 @@ function Builder({ automation, template }: { automation: Automation | null; temp
                       ? Clock
                       : action.type === "whatsapp"
                         ? MessageCircle
-                        : Webhook
+                        : action.type === "email"
+                          ? Mail
+                          : Webhook
                   }
                   tone={action.type === "wait" ? "wait" : "webhook"}
                   eyebrow={t(`automations.builder.kinds.${action.type}`)}
@@ -483,6 +491,21 @@ function Builder({ automation, template }: { automation: Automation | null; temp
               onTest={() => runTest(selectedStep.id)}
               onClose={() => setSelected(null)}
             />
+          ) : selectedStep?.type === "email" ? (
+            <EmailPanel
+              key={selectedStep.id}
+              step={selectedStep}
+              trigger={draft.trigger ?? "created"}
+              errors={errors}
+              index={selectedIndex}
+              result={results[selectedStep.id]}
+              testing={test.isPending}
+              testWith={testWith}
+              onTestWith={setTestWith}
+              onChange={(change) => updateStep(selectedStep.id, change)}
+              onTest={() => runTest(selectedStep.id)}
+              onClose={() => setSelected(null)}
+            />
           ) : selectedStep?.type === "webhook" ? (
             <StepPanel
               key={selectedStep.id}
@@ -516,17 +539,23 @@ function AddStep({
   onAdd: (step: AutomationAction) => void;
 }) {
   const { t } = useTranslation();
+  const { business } = useBusinessContext();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useClickOutside(open, [ref], () => setOpen(false));
   const options: {
-    key: "webhook" | "whatsapp" | "wait";
+    key: "webhook" | "whatsapp" | "email" | "wait";
     icon: LucideIcon;
     make: () => AutomationAction;
   }[] = [
     ...(webhooksLeft
       ? [
           { key: "whatsapp" as const, icon: MessageCircle, make: () => newWhatsapp() },
+          {
+            key: "email" as const,
+            icon: Mail,
+            make: () => newEmail(business.locale === "en" ? "en" : "es"),
+          },
           { key: "webhook" as const, icon: Webhook, make: () => newWebhook() },
         ]
       : []),
@@ -1440,7 +1469,7 @@ function WhatsappPanel({
 }) {
   const { t, i18n } = useTranslation();
   const { business } = useBusinessContext();
-  const templates = useWhatsappTemplates(business.id, true);
+  const templates = useBusinessWhatsappTemplates(business.id);
   const sample = useMemo(
     () => sampleValues(business, AUTOMATION_EVENTS[trigger], i18n.resolvedLanguage ?? "es"),
     [business, trigger, i18n.resolvedLanguage],
@@ -1561,8 +1590,145 @@ function WhatsappPanel({
   );
 }
 
+/** An email step: which text, and its words when the account allows changing them. */
+function EmailPanel({
+  index,
+  step,
+  trigger,
+  errors,
+  result,
+  testing,
+  testWith,
+  onTestWith,
+  onChange,
+  onTest,
+  onClose,
+}: {
+  index: number;
+  step: EmailAction;
+  trigger: AutomationTrigger;
+  errors: FieldErrors;
+  result: AutomationStepResult | undefined;
+  testing: boolean;
+  testWith: string;
+  onTestWith: (id: string) => void;
+  onChange: (change: Partial<EmailAction>) => void;
+  onTest: () => void;
+  onClose: () => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const { business } = useBusinessContext();
+  const channels = useBusinessChannels(business.id);
+  const sample = useMemo(
+    () => sampleValues(business, AUTOMATION_EVENTS[trigger], i18n.resolvedLanguage ?? "es"),
+    [business, trigger, i18n.resolvedLanguage],
+  );
+  const ready = emailTemplate(step.template);
+  const editable = channels.data?.email === "own";
+  const subject = (editable && step.subject) || ready?.subject[step.language] || "";
+  const body = (editable && step.body) || ready?.body[step.language] || "";
+  const problem = (field: string) => fieldMessage(t, field, errors[`actions.${index}.${field}`]);
+
+  return (
+    <div className="space-y-5">
+      <PanelTitle
+        icon={Mail}
+        title={t("automations.email.title")}
+        hint={t("automations.email.hint")}
+        onClose={onClose}
+      />
+      {channels.data?.email === null && (
+        <p className="text-[13px] text-amber-700">{t("automations.email.notConnected")}</p>
+      )}
+      <Field label={t("automations.email.template")}>
+        {(props) => (
+          <Select
+            {...props}
+            value={step.template}
+            onChange={(event) =>
+              onChange({
+                template: event.target.value as EmailAction["template"],
+                subject: "",
+                body: "",
+              })
+            }
+          >
+            {EMAIL_TEMPLATE_NAMES.map((name) => (
+              <option key={name} value={name}>
+                {t(`automations.email.templates.${name}`)}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+      <Field label={t("automations.email.language")}>
+        {(props) => (
+          <Select
+            {...props}
+            value={step.language}
+            onChange={(event) =>
+              onChange({
+                language: event.target.value as EmailAction["language"],
+                subject: "",
+                body: "",
+              })
+            }
+          >
+            <option value="es">Español</option>
+            <option value="en">English</option>
+          </Select>
+        )}
+      </Field>
+      {editable ? (
+        <>
+          <Field label={t("automations.email.subject")} error={problem("subject")}>
+            {(props) => (
+              <TemplateEditor
+                {...props}
+                rows={1}
+                value={subject}
+                sample={sample}
+                onChange={(value) => onChange({ subject: value })}
+              />
+            )}
+          </Field>
+          <Field label={t("automations.email.body")} error={problem("body")}>
+            {(props) => (
+              <TemplateEditor
+                {...props}
+                rows={9}
+                value={body}
+                sample={sample}
+                onChange={(value) => onChange({ body: value })}
+              />
+            )}
+          </Field>
+        </>
+      ) : (
+        <p className="text-xs text-zinc-500">{t("automations.email.fixed")}</p>
+      )}
+      <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-[13px] text-zinc-800">
+        <p className="font-medium">{renderEmailText(subject, sample)}</p>
+        <p className="mt-2 whitespace-pre-line">{renderEmailText(body, sample)}</p>
+      </div>
+      <div className="space-y-2">
+        <TestAppointmentPicker value={testWith} onChange={onTestWith} />
+        <Button variant="secondary" disabled={testing || !testWith} onClick={onTest}>
+          <Play className="size-4" aria-hidden />
+          {t("automations.whatsapp.test")}
+        </Button>
+      </div>
+      {result && <StepResult result={result} />}
+    </div>
+  );
+}
+
 function failureReason(t: TFunction, error: string | null): string {
   if (!error) return "";
+  if (error === "email_no_address") return t("automations.result.emailNoAddress");
+  if (error === "email_not_connected") return t("automations.result.emailNotConnected");
+  if (error === "email_login") return t("email.failures.email_login");
+  if (error === "email_unreachable") return t("email.failures.email_unreachable");
   if (error === "whatsapp_no_phone") return t("automations.result.whatsappNoPhone");
   if (error === "whatsapp_not_connected") return t("automations.result.whatsappNotConnected");
   if (error === "whatsapp_needs_appointment") return t("automations.result.whatsappNeedsBooking");

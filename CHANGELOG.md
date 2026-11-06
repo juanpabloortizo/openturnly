@@ -9,9 +9,12 @@ All notable changes to OpenTurnly are documented here. The format follows
 ### Added
 
 - WhatsApp messages in workflows: a new step sends the customer an approved template with the
-  appointment's details, such as a reminder the day before. Businesses connect their own number
-  in **Settings → WhatsApp**, and an install can set one number for all of them. See
-  [docs/whatsapp.md](docs/whatsapp.md).
+  appointment's details, such as a reminder the day before. See [docs/whatsapp.md](docs/whatsapp.md).
+- Email in workflows: a new step sends the customer a confirmation, a reminder, or a notice that
+  their appointment moved or was cancelled, through any provider that takes SMTP. See
+  [docs/email.md](docs/email.md).
+- **Channels**, in the account menu: where whoever runs the install connects WhatsApp and email
+  for all of its businesses.
 
 ### Changed
 

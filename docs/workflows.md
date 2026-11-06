@@ -10,6 +10,7 @@ steps:
 
 - **Send WhatsApp**: messages the appointment's customer with an approved template
   ([docs/whatsapp.md](docs/whatsapp.md)).
+- **Send email**: emails the appointment's customer ([docs/email.md](docs/email.md)).
 - **Notify another system**: sends the appointment's data to a webhook (up to 5 sending steps
   per flow).
 - **Wait**: pauses the flow; the steps after it go out once that time has passed.
@@ -20,7 +21,8 @@ from a template (reminder 1 hour before, new booking notice, review request) and
 paste the address of the system that receives it.
 
 **Test** sends the event right away to every step (waits are skipped), using one of your
-appointments or example data (WhatsApp steps need a real appointment), and each node shows how its system answered (status, time,
+appointments or example data (WhatsApp and email steps need a real appointment), and each node
+shows how its system answered (status, time,
 its response and the data sent). Tests work before saving too, and never change any
 appointment.
 
