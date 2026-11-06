@@ -29,6 +29,7 @@ import { Avatar } from "../components/avatar.tsx";
 import { BirthDateField } from "../components/birth-date-field.tsx";
 import { BookingBackdrop, isDarkTheme } from "../components/booking-backdrop.tsx";
 import { BookingHeader } from "../components/booking-header.tsx";
+import { ManageBookingModal } from "../components/manage-booking-modal.tsx";
 import { MonthCalendar } from "../components/month-calendar.tsx";
 import { PhoneInput } from "../components/phone-input.tsx";
 import { Alert, Button, Field, Input, Select, Spinner, Textarea } from "../components/ui.tsx";
@@ -82,6 +83,9 @@ function useEmbedded(embedded: boolean) {
 export function PublicBookingPage() {
   const { slug = "" } = useParams();
   const [searchParams] = useSearchParams();
+  const manageParam = searchParams.get("manage") || searchParams.get("code") || "";
+  const [manageModalOpen, setManageModalOpen] = useState(Boolean(manageParam));
+  const [manageCode, setManageCode] = useState(manageParam);
   const embedded = searchParams.has("embed");
   const catalog = usePublicCatalog(slug);
   const { i18n } = useTranslation();
@@ -104,6 +108,12 @@ export function PublicBookingPage() {
     );
   }
   const { business } = catalog.data;
+
+  const handleOpenManage = (code?: string) => {
+    if (code) setManageCode(code);
+    setManageModalOpen(true);
+  };
+
   if (embedded) {
     // The website around it already shows who the business is: just the booking steps.
     return (
@@ -115,8 +125,14 @@ export function PublicBookingPage() {
             searchParams.get("embed") !== "popup" && "rounded-2xl ring-1 ring-zinc-950/10",
           )}
         >
-          <BookingWizard slug={slug} catalog={catalog.data} t={t} locale={locale} />
+          <BookingWizard slug={slug} catalog={catalog.data} t={t} locale={locale} onManage={handleOpenManage} />
         </main>
+        <ManageBookingModal
+          isOpen={manageModalOpen}
+          onClose={() => setManageModalOpen(false)}
+          slug={slug}
+          initialCode={manageCode}
+        />
       </div>
     );
   }
@@ -133,8 +149,23 @@ export function PublicBookingPage() {
         )}
       >
         <BookingHeader business={business} />
-        <BookingWizard slug={slug} catalog={catalog.data} t={t} locale={locale} />
+        <div className="px-6 pt-3 pb-1 flex justify-end">
+          <button
+            type="button"
+            onClick={() => handleOpenManage()}
+            className="text-xs font-medium text-zinc-500 hover:text-zinc-800 underline flex items-center gap-1 cursor-pointer"
+          >
+            {t("booking.manageBookingAction")}
+          </button>
+        </div>
+        <BookingWizard slug={slug} catalog={catalog.data} t={t} locale={locale} onManage={handleOpenManage} />
       </main>
+      <ManageBookingModal
+        isOpen={manageModalOpen}
+        onClose={() => setManageModalOpen(false)}
+        slug={slug}
+        initialCode={manageCode}
+      />
     </div>
   );
 }
@@ -212,11 +243,13 @@ function BookingWizard({
   catalog,
   t,
   locale,
+  onManage,
 }: {
   slug: string;
   catalog: PublicCatalog;
   t: T;
   locale: string;
+  onManage?: (code?: string) => void;
 }) {
   const { business, professionals, locations } = catalog;
   // With several locations the customer starts by choosing where. A link to one location
@@ -425,6 +458,7 @@ function BookingWizard({
           showLocation={severalLocations}
           t={t}
           locale={locale}
+          onManage={onManage}
           onAgain={() => {
             setBooked(null);
             if (severalLocations) setLocationId(null);
@@ -1366,7 +1400,9 @@ function BookingDone({
   t,
   locale,
   onAgain,
+  onManage,
 }: {
+  onManage?: (code: string) => void;
   appointment: BookedAppointment;
   showLocation: boolean;
   t: T;
@@ -1427,6 +1463,22 @@ function BookingDone({
           t={t}
         />
       </div>
+      <div className="mt-5 p-4 rounded-2xl bg-zinc-50 border border-zinc-200 w-full max-w-md text-left space-y-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold text-zinc-900">{t("booking.manageBookingTitle")}</span>
+          {onManage && (
+            <button
+              type="button"
+              onClick={() => onManage(appointment.code)}
+              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+            >
+              {t("booking.manageBookingButton")}
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] text-zinc-500">{t("booking.saveBookingCodeHint")}</p>
+      </div>
+
       <div className="mt-6 flex flex-wrap justify-center gap-3">
         <Button variant="ghost" onClick={onAgain}>
           <RotateCcw className="size-4" aria-hidden />

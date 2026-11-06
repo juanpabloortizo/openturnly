@@ -2,6 +2,8 @@ import {
   addDays,
   bookingDetailsSchema,
   bookingSchema,
+  instantToZoned,
+  isTimeString,
   isDateString,
   parseTime,
   slotsBetween,
@@ -9,11 +11,12 @@ import {
   todayIn,
   zonedTimeToInstant,
 } from "@openturnly/core";
-import { and, asc, count, eq, gt, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, lt, ne, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import {
   appointments,
+  customers,
   type Business,
   businesses,
   locationServices,
@@ -464,6 +467,286 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
           },
           201,
         );
+      })
+
+      // --- Customer self-service (Lookup, Reschedule, Cancel without account) ---
+
+      .post("/businesses/:slug/appointments/lookup", async (c) => {
+        const business = await findBusiness(c.req.param("slug"));
+        const lookupSchema = z.object({
+          code: z.string().trim().min(1).max(20),
+          contact: z.string().trim().min(2).max(120),
+        });
+        const input = await parseBody(c, lookupSchema);
+        const codeNormalized = input.code.trim().toUpperCase();
+
+        const [appt] = await db
+          .select({
+            id: appointments.id,
+            code: appointments.code,
+            status: appointments.status,
+            startsAt: appointments.startsAt,
+            endsAt: appointments.endsAt,
+            serviceName: appointments.serviceName,
+            resourceName: appointments.resourceName,
+            priceAmount: appointments.priceAmount,
+            serviceId: appointments.serviceId,
+            resourceId: appointments.resourceId,
+            customerId: appointments.customerId,
+            cancelledAt: appointments.cancelledAt,
+            answers: appointments.answers,
+          })
+          .from(appointments)
+          .where(
+            and(
+              eq(appointments.businessId, business.id),
+              eq(appointments.code, codeNormalized),
+            ),
+          )
+          .limit(1);
+
+        if (!appt) throw apiError(404, "appointment_not_found");
+
+        const [customer] = await db
+          .select({
+            id: customers.id,
+            firstName: customers.firstName,
+            lastName: customers.lastName,
+            phone: customers.phone,
+            email: customers.email,
+          })
+          .from(customers)
+          .where(eq(customers.id, appt.customerId))
+          .limit(1);
+
+        if (!customer) throw apiError(404, "customer_not_found");
+
+        const cleanContact = input.contact.trim().toLowerCase();
+        const cleanPhoneInput = cleanContact.replace(/\D/g, "");
+        const custPhone = (customer.phone ?? "").replace(/\D/g, "");
+        const custEmail = (customer.email ?? "").trim().toLowerCase();
+
+        const emailMatch = Boolean(custEmail && custEmail === cleanContact);
+        const phoneMatch = Boolean(
+          cleanPhoneInput.length >= 4 &&
+          custPhone &&
+          (custPhone === cleanPhoneInput || custPhone.endsWith(cleanPhoneInput) || cleanPhoneInput.endsWith(custPhone)),
+        );
+
+        if (!emailMatch && !phoneMatch) {
+          throw apiError(403, "contact_mismatch");
+        }
+
+        const startZoned = instantToZoned(appt.startsAt.getTime(), business.timezone);
+        const endZoned = instantToZoned(appt.endsAt.getTime(), business.timezone);
+
+        const [serviceRow] = appt.serviceId
+          ? await db
+              .select({ description: services.description })
+              .from(services)
+              .where(eq(services.id, appt.serviceId))
+          : [];
+
+        return c.json({
+          appointment: {
+            id: appt.id,
+            code: appt.code,
+            status: appt.status,
+            date: startZoned.date,
+            time: startZoned.time,
+            endTime: endZoned.time,
+            startsAt: appt.startsAt,
+            endsAt: appt.endsAt,
+            serviceName: appt.serviceName,
+            serviceDescription: serviceRow?.description ?? null,
+            resourceName: appt.resourceName,
+            priceAmount: appt.priceAmount,
+            serviceId: appt.serviceId,
+            resourceId: appt.resourceId,
+            cancelledAt: appt.cancelledAt,
+            answers: appt.answers,
+            customer: {
+              firstName: customer.firstName,
+              lastName: customer.lastName,
+              phone: customer.phone,
+              email: customer.email,
+            },
+          },
+          business: {
+            name: business.name,
+            slug: business.slug,
+            address: business.address,
+            phone: business.phone,
+            currency: business.currency,
+          },
+        });
+      })
+
+      .post("/businesses/:slug/appointments/:code/cancel", async (c) => {
+        const business = await findBusiness(c.req.param("slug"));
+        const codeNormalized = c.req.param("code").trim().toUpperCase();
+        const cancelSchema = z.object({
+          contact: z.string().trim().min(2).max(120),
+          reason: z.string().trim().max(300).optional(),
+        });
+        const input = await parseBody(c, cancelSchema);
+
+        const [appt] = await db
+          .select()
+          .from(appointments)
+          .where(
+            and(
+              eq(appointments.businessId, business.id),
+              eq(appointments.code, codeNormalized),
+            ),
+          )
+          .limit(1);
+
+        if (!appt) throw apiError(404, "appointment_not_found");
+        if (appt.status === "cancelled") {
+          return c.json({ ok: true, appointment: appt });
+        }
+
+        const [customer] = await db
+          .select()
+          .from(customers)
+          .where(eq(customers.id, appt.customerId))
+          .limit(1);
+
+        if (!customer) throw apiError(404, "customer_not_found");
+
+        const cleanContact = input.contact.trim().toLowerCase();
+        const cleanPhoneInput = cleanContact.replace(/\D/g, "");
+        const custPhone = (customer.phone ?? "").replace(/\D/g, "");
+        const custEmail = (customer.email ?? "").trim().toLowerCase();
+        const emailMatch = Boolean(custEmail && custEmail === cleanContact);
+        const phoneMatch = Boolean(
+          cleanPhoneInput.length >= 4 &&
+          custPhone &&
+          (custPhone === cleanPhoneInput || custPhone.endsWith(cleanPhoneInput) || cleanPhoneInput.endsWith(custPhone)),
+        );
+
+        if (!emailMatch && !phoneMatch) {
+          throw apiError(403, "contact_mismatch");
+        }
+
+        const [cancelled] = await db
+          .update(appointments)
+          .set({ status: "cancelled", cancelledAt: new Date() })
+          .where(eq(appointments.id, appt.id))
+          .returning();
+
+        if (!cancelled) throw apiError(500, "internal_error");
+
+        await automations.emit(cancelled.id, "cancelled");
+
+        return c.json({ ok: true, appointment: cancelled });
+      })
+
+      .post("/businesses/:slug/appointments/:code/reschedule", async (c) => {
+        const business = await findBusiness(c.req.param("slug"));
+        const codeNormalized = c.req.param("code").trim().toUpperCase();
+        const rescheduleSchema = z.object({
+          contact: z.string().trim().min(2).max(120),
+          date: z.string().refine(isDateString, "invalid_date"),
+          time: z.string().refine(isTimeString, "invalid_time"),
+          resourceId: z.string().nullable().optional(),
+        });
+        const input = await parseBody(c, rescheduleSchema);
+
+        const [appt] = await db
+          .select()
+          .from(appointments)
+          .where(
+            and(
+              eq(appointments.businessId, business.id),
+              eq(appointments.code, codeNormalized),
+            ),
+          )
+          .limit(1);
+
+        if (!appt) throw apiError(404, "appointment_not_found");
+        if (appt.status === "cancelled") {
+          throw apiError(409, "appointment_cancelled");
+        }
+        if (!appt.serviceId) {
+          throw apiError(400, "service_not_found");
+        }
+
+        const [customer] = await db
+          .select()
+          .from(customers)
+          .where(eq(customers.id, appt.customerId))
+          .limit(1);
+
+        if (!customer) throw apiError(404, "customer_not_found");
+
+        const cleanContact = input.contact.trim().toLowerCase();
+        const cleanPhoneInput = cleanContact.replace(/\D/g, "");
+        const custPhone = (customer.phone ?? "").replace(/\D/g, "");
+        const custEmail = (customer.email ?? "").trim().toLowerCase();
+        const emailMatch = Boolean(custEmail && custEmail === cleanContact);
+        const phoneMatch = Boolean(
+          cleanPhoneInput.length >= 4 &&
+          custPhone &&
+          (custPhone === cleanPhoneInput || custPhone.endsWith(cleanPhoneInput) || cleanPhoneInput.endsWith(custPhone)),
+        );
+
+        if (!emailMatch && !phoneMatch) {
+          throw apiError(403, "contact_mismatch");
+        }
+
+        const [service] = await db
+          .select()
+          .from(services)
+          .where(and(eq(services.id, appt.serviceId), eq(services.businessId, business.id)));
+
+        if (!service) throw apiError(400, "service_not_found");
+
+        const targetStartsAtMs = zonedTimeToInstant(input.date, parseTime(input.time), business.timezone);
+        const targetStartsAt = new Date(targetStartsAtMs);
+        const targetEndsAt = new Date(targetStartsAtMs + service.durationMin * 60 * 1000);
+
+        const assignedResource = input.resourceId || appt.resourceId;
+
+        // Check clashes if resource assigned
+        if (assignedResource) {
+          const clash = await db
+            .select({ id: appointments.id })
+            .from(appointments)
+            .where(
+              and(
+                eq(appointments.businessId, business.id),
+                eq(appointments.resourceId, assignedResource),
+                eq(appointments.status, "confirmed"),
+                ne(appointments.id, appt.id),
+                lt(appointments.startsAt, targetEndsAt),
+                gt(appointments.endsAt, targetStartsAt),
+              ),
+            )
+            .limit(1);
+
+          if (clash.length > 0) {
+            throw apiError(409, "slot_taken");
+          }
+        }
+
+        const previousStartsAt = appt.startsAt;
+        const [updated] = await db
+          .update(appointments)
+          .set({
+            startsAt: targetStartsAt,
+            endsAt: targetEndsAt,
+            resourceId: assignedResource,
+          })
+          .where(eq(appointments.id, appt.id))
+          .returning();
+
+        if (!updated) throw apiError(500, "internal_error");
+
+        await automations.emit(updated.id, "rescheduled", previousStartsAt);
+
+        return c.json({ ok: true, appointment: updated });
       })
   );
 }
