@@ -96,18 +96,22 @@ export function ChannelsSection() {
   const number = whatsapp.data ? whatsappSummary(t, whatsapp.data) : "";
   const address = email.data ? emailSummary(t, email.data) : "";
   return (
-    <div className="grid gap-3 md:grid-cols-3">
+    <div className="space-y-3">
       <ChannelCard
         icon={MessageCircle}
         title={t("channels.tabs.whatsapp")}
-        active={Boolean(whatsapp.data?.active)}
+        loading={whatsapp.isPending}
+        source={whatsapp.data?.active ?? null}
+        sender={whatsapp.data ? whatsappSender(t, whatsapp.data) : null}
         detail={number}
         onOpen={() => setOpen("whatsapp")}
       />
       <ChannelCard
         icon={Mail}
         title={t("channels.tabs.email")}
-        active={Boolean(email.data?.active)}
+        loading={email.isPending}
+        source={email.data?.active ?? null}
+        sender={email.data ? emailSender(email.data) : null}
         detail={address}
         onOpen={() => setOpen("email")}
       />
@@ -139,55 +143,103 @@ export function ChannelsSection() {
   );
 }
 
-/** One channel at a glance. Without `onOpen` it isn't available yet. */
+/** Where a channel sends from. Null means it can't send yet. */
+type ChannelSource = "own" | "default" | null;
+
+const SOURCE_ACTIONS = {
+  own: "channels.modify",
+  default: "channels.customize",
+} as const;
+
+const SOURCE_LABELS = {
+  own: "channels.ownSetup",
+  default: "channels.defaultSetup",
+} as const;
+
+const statusLabel = (source: ChannelSource) => {
+  if (source === "default") return "channels.activeDefault";
+  return source === "own" ? "whatsapp.active" : "whatsapp.inactive";
+};
+
+/**
+ * One channel at a glance: whether it works and which account it sends from. A channel that
+ * already works needs nothing, so its button is for changing it. Without `onOpen` it isn't
+ * available yet.
+ */
 function ChannelCard({
   icon: Icon,
   title,
   detail,
-  active,
+  source = null,
+  sender = null,
+  loading = false,
   onOpen,
 }: {
   icon: LucideIcon;
   title: string;
   detail: string;
-  active?: boolean;
+  source?: ChannelSource;
+  /** The account or number it sends from, when it can send. */
+  sender?: string | null;
+  loading?: boolean;
   onOpen?: () => void;
 }) {
   const { t } = useTranslation();
   return (
-    <section className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4">
-      <div className="flex items-center justify-between gap-2">
-        <span className="grid size-9 place-items-center rounded-lg bg-zinc-100 text-zinc-600">
-          <Icon className="size-[18px]" aria-hidden />
-        </span>
-        <Badge tone={active ? "success" : "neutral"}>
-          {t(onOpen ? (active ? "whatsapp.active" : "whatsapp.inactive") : "channels.soon")}
-        </Badge>
-      </div>
+    <section className="flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-4 sm:flex-row sm:items-center">
+      <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-zinc-100 text-zinc-600">
+        <Icon className="size-5" aria-hidden />
+      </span>
       <div className="min-w-0 flex-1">
-        <h2 className="text-[15px] font-semibold text-zinc-900">{title}</h2>
-        <p className="mt-1 text-[13px] break-words text-zinc-500">{detail}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-[15px] font-semibold text-zinc-900">{title}</h2>
+          {!loading && (
+            <Badge tone={source ? "success" : "neutral"}>
+              {t(onOpen ? statusLabel(source) : "channels.soon")}
+            </Badge>
+          )}
+        </div>
+        {source && sender ? (
+          <>
+            <p className="mt-1 text-sm break-words text-zinc-500">
+              {t("channels.sendsFrom")} <span className="font-medium text-zinc-900">{sender}</span>
+            </p>
+            <p className="text-[13px] text-zinc-500">{t(SOURCE_LABELS[source])}</p>
+          </>
+        ) : (
+          <p className="mt-1 text-sm break-words text-zinc-500">{detail}</p>
+        )}
       </div>
       {onOpen && (
-        <Button variant="secondary" onClick={onOpen}>
-          {t("channels.configure")}
+        <Button variant="secondary" className="shrink-0" disabled={loading} onClick={onOpen}>
+          {t(source ? SOURCE_ACTIONS[source] : "channels.connect")}
         </Button>
       )}
     </section>
   );
 }
 
+/** The number sending right now, if any. */
+function whatsappSender(t: TFunction, overview: WhatsappOverview) {
+  const profile = overview.active === "own" ? overview.connection : overview.default;
+  if (!overview.active || !profile) return null;
+  return (
+    [profile.displayName, profile.phoneNumber].filter(Boolean).join(" · ") ||
+    t("whatsapp.unknownNumber")
+  );
+}
+
+/** The address sending right now, if any. */
+function emailSender(overview: EmailOverview) {
+  if (overview.active === "own") return overview.connection?.fromEmail ?? null;
+  return overview.active === "default" ? overview.default : null;
+}
+
 /** Which number is sending right now, in plain words. */
 function whatsappSummary(t: TFunction, overview: WhatsappOverview) {
-  const number = (profile: { phoneNumber: string | null; displayName: string | null }) =>
-    [profile.displayName, profile.phoneNumber].filter(Boolean).join(" · ") ||
-    t("whatsapp.unknownNumber");
-  if (overview.active === "own" && overview.connection) {
-    return t("whatsapp.sendingOwn", { number: number(overview.connection) });
-  }
-  if (overview.active === "default" && overview.default) {
-    return t("whatsapp.sendingDefault", { number: number(overview.default) });
-  }
+  const number = whatsappSender(t, overview);
+  if (overview.active === "own" && number) return t("whatsapp.sendingOwn", { number });
+  if (overview.active === "default" && number) return t("whatsapp.sendingDefault", { number });
   return t("whatsapp.notSending");
 }
 
