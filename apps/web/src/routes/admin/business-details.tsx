@@ -7,7 +7,7 @@ import {
   PAGE_THEMES,
   type PageTheme,
 } from "@openturnly/core";
-import { ArrowUpRight, Check, ChevronDown, ImagePlus, Trash2 } from "lucide-react";
+import { ArrowUpRight, Check, ChevronDown, ImagePlus, Monitor, Smartphone, Trash2 } from "lucide-react";
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -154,6 +154,7 @@ function PageTab({ business }: { business: Business }) {
   // Bumped on discard so the questions editor starts again from the saved form.
   const [formVersion, setFormVersion] = useState(0);
   const [preview, setPreview] = useState<"page" | "form">("page");
+  const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
   const dirty =
     brandColor !== savedColor ||
     pageTheme !== business.pageTheme ||
@@ -216,8 +217,40 @@ function PageTab({ business }: { business: Business }) {
           </div>
         </div>
         <div className="lg:sticky lg:top-6">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-xs font-medium text-zinc-500">{t("settings.previewTitle")}</p>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-medium text-zinc-500">{t("settings.previewTitle")}</p>
+              <div className="inline-flex rounded-lg bg-zinc-100 p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setDevice("desktop")}
+                  className={cn(
+                    "flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors",
+                    device === "desktop"
+                      ? "bg-white text-zinc-900 shadow-xs"
+                      : "text-zinc-500 hover:text-zinc-800",
+                  )}
+                  title="Desktop"
+                >
+                  <Monitor className="size-3" />
+                  <span>PC</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDevice("mobile")}
+                  className={cn(
+                    "flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors",
+                    device === "mobile"
+                      ? "bg-white text-zinc-900 shadow-xs"
+                      : "text-zinc-500 hover:text-zinc-800",
+                  )}
+                  title="Mobile"
+                >
+                  <Smartphone className="size-3" />
+                  <span>Móvil</span>
+                </button>
+              </div>
+            </div>
             <div className="inline-flex rounded-lg bg-zinc-100 p-0.5" role="tablist">
               {(["page", "form"] as const).map((view) => (
                 <button
@@ -238,16 +271,24 @@ function PageTab({ business }: { business: Business }) {
               ))}
             </div>
           </div>
-          {preview === "page" ? (
-            <PagePreview business={business} brandColor={brandColor} pageTheme={pageTheme} />
-          ) : (
-            <FormPreview
-              business={business}
-              form={form}
-              brandColor={brandColor}
-              pageTheme={pageTheme}
-            />
-          )}
+          <div
+            className={cn(
+              "transition-all duration-300",
+              device === "mobile" &&
+                "mx-auto max-w-[340px] rounded-[36px] border-4 border-zinc-900 p-1.5 shadow-2xl bg-zinc-950",
+            )}
+          >
+            {preview === "page" ? (
+              <PagePreview business={business} brandColor={brandColor} pageTheme={pageTheme} />
+            ) : (
+              <FormPreview
+                business={business}
+                form={form}
+                brandColor={brandColor}
+                pageTheme={pageTheme}
+              />
+            )}
+          </div>
         </div>
       </div>
       <SaveBar dirty={dirty} saving={update.isPending} onSave={save} onDiscard={discard} />
@@ -845,7 +886,12 @@ function ImageField({
           </button>
         )}
       </div>
-      <p className="mt-2 text-[13px] font-medium text-zinc-800">{label}</p>
+      <div className="mt-2 flex items-baseline justify-between gap-1">
+        <p className="text-[13px] font-medium text-zinc-800">{label}</p>
+        <span className="text-[11px] text-zinc-400">
+          {kind === "logo" ? "400×400" : "1200×400"}
+        </span>
+      </div>
       <input
         ref={input}
         type="file"
