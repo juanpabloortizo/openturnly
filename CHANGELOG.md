@@ -31,6 +31,8 @@ All notable changes to OpenTurnly are documented here. The format follows
 ### Fixed
 
 - The sample business lost its no-show when the appointment fell on a short day.
+- An appointment whose deposits already cover its price no longer reads "Not charged": it shows
+  as paid, in the agenda and in the day's report, with only the sale left to close.
 
 ### Security
 

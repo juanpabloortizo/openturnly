@@ -6,12 +6,13 @@ import {
   weekdayOf,
   zonedTimeToInstant,
 } from "@openturnly/core";
-import { and, asc, count, eq, gte, inArray, lt, lte, ne, sql } from "drizzle-orm";
+import { and, asc, count, eq, gte, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
 import {
   appointments,
   type Business,
   closures,
   customers,
+  deposits,
   holidayOverrides,
   locations,
   resourceLocations,
@@ -317,6 +318,8 @@ export async function summaryReport(
       startsAt: appointments.startsAt,
       serviceName: appointments.serviceName,
       resourceName: appointments.resourceName,
+      priceAmount: appointments.priceAmount,
+      discountAmount: appointments.discountAmount,
       locationName: locations.name,
       firstName: customers.firstName,
       lastName: customers.lastName,
@@ -353,6 +356,32 @@ export async function summaryReport(
         ).map((row) => row.id)
       : [],
   );
+  // Deposits that cover the price count as paid, before the sale is closed.
+  const depositedToday = new Map<string, number>();
+  if (todayRows.length > 0) {
+    const waiting = await db
+      .select({ appointmentId: deposits.appointmentId, amount: deposits.amount })
+      .from(deposits)
+      .where(
+        and(
+          inArray(
+            deposits.appointmentId,
+            todayRows.map((row) => row.id),
+          ),
+          eq(deposits.status, "active"),
+          isNull(deposits.appliedSaleId),
+        ),
+      );
+    for (const { appointmentId, amount } of waiting) {
+      if (appointmentId) {
+        depositedToday.set(appointmentId, (depositedToday.get(appointmentId) ?? 0) + amount);
+      }
+    }
+  }
+  const coveredByDeposits = (row: (typeof todayRows)[number]) => {
+    const left = depositedToday.get(row.id) ?? 0;
+    return row.priceAmount !== null && left > 0 && left >= row.priceAmount - row.discountAmount;
+  };
 
   return {
     period,
@@ -371,7 +400,7 @@ export async function summaryReport(
       professional: row.resourceName,
       location: row.locationName,
       customer: `${row.firstName} ${row.lastName}`,
-      paid: paidToday.has(row.id),
+      paid: paidToday.has(row.id) || coveredByDeposits(row),
     })),
   };
 }

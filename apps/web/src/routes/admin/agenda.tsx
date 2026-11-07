@@ -546,6 +546,13 @@ function AppointmentDetails({
   const noShow = appointment.status === "no_show";
   // Held while the customer pays online: it confirms or frees itself within minutes.
   const unpaid = appointment.status === "pending_payment";
+  const owed = Math.max(
+    0,
+    (appointment.priceAmount ?? 0) - appointment.discountAmount - appointment.depositAmount,
+  );
+  const deposited = appointment.depositAmount > 0;
+  // Deposits that already cover the price: the money is in, only the sale is left to close.
+  const covered = deposited && appointment.priceAmount !== null && owed === 0;
   // Once it starts, the customer either came (and pays) or didn't.
   const started = Date.parse(appointment.startsAt) <= Date.now();
   const rows = [
@@ -727,8 +734,16 @@ function AppointmentDetails({
           ) : (
             <>
               <div className="text-sm">
-                <div className="font-medium text-zinc-900">{t("checkout.unpaid")}</div>
-                {appointment.depositAmount > 0 && (
+                <div className="font-medium text-zinc-900">
+                  {covered ? (
+                    <Badge tone="success">{t("checkout.paid")}</Badge>
+                  ) : deposited && appointment.priceAmount !== null ? (
+                    t("checkout.dueLeft", { amount: formatPrice(owed, business.currency) })
+                  ) : (
+                    t("checkout.unpaid")
+                  )}
+                </div>
+                {deposited && (
                   <div className="text-[13px] text-zinc-500">
                     {t("checkout.depositLeft", {
                       amount: formatPrice(appointment.depositAmount, business.currency),
@@ -748,12 +763,18 @@ function AppointmentDetails({
                     {t("agenda.markNoShow")}
                   </Button>
                 )}
-                <Button variant="secondary" size="sm" onClick={() => setPayment("deposit")}>
-                  {t("deposits.new")}
-                </Button>
-                <Button size="sm" onClick={() => setPayment("charge")}>
+                {!covered && (
+                  <Button variant="secondary" size="sm" onClick={() => setPayment("deposit")}>
+                    {t("deposits.new")}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant={covered ? "secondary" : "primary"}
+                  onClick={() => setPayment("charge")}
+                >
                   <Banknote className="size-4" aria-hidden />
-                  {t("checkout.chargeShort")}
+                  {t(covered ? "checkout.closeSale" : "checkout.chargeShort")}
                 </Button>
               </div>
             </>

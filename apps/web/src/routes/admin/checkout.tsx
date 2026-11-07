@@ -351,7 +351,9 @@ export function CheckoutModal({
             {t("common.cancel")}
           </Button>
           <Button onClick={submit} loading={create.isPending} disabled={difference !== 0}>
-            {t("checkout.charge", { amount: money(due) })}
+            {remaining === 0 && depositTotal > 0
+              ? t("checkout.closeSale")
+              : t("checkout.charge", { amount: money(due) })}
           </Button>
         </>
       }
