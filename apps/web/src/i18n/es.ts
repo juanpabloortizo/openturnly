@@ -519,7 +519,10 @@ export const es = {
     passwordHint: "Mínimo 10 caracteres.",
     businessName: "Nombre del negocio",
     slug: "Enlace de reservas",
-    slugHint: "Solo minúsculas, números y guiones. Es el enlace que compartes con tus clientes.",
+    slugHint:
+      "Solo minúsculas, números y guiones. Revísalo bien: después de crear el negocio no se puede cambiar.",
+    slugLocked:
+      "No se puede cambiar: de este enlace dependen tu página de reservas, tus códigos QR y tus integraciones.",
     timezone: "Zona horaria",
     currency: "Moneda",
     locale: "Idioma de la página de reservas",
@@ -1680,8 +1683,14 @@ export const es = {
     title: "Mercado Pago",
     description: "Tus clientes pagan al reservar y el dinero llega directo a tu cuenta.",
     token: "Access Token",
-    tokenHint:
-      "Lo encuentras en Mercado Pago Developers → Tus integraciones → Credenciales. Para cobrar de verdad, usa el de producción.",
+    guideTitle: "Cómo conectar tu cuenta",
+    guideStep1: "Entra a Mercado Pago Developers con la cuenta del negocio y crea una aplicación.",
+    guideStep2:
+      "Ábrela, cambia a Producción y activa las credenciales con tu rubro y tu sitio web.",
+    guideStep3: "Copia el Access Token de producción.",
+    guideStep4: "Pégalo aquí abajo y dale Conectar.",
+    guideLink: "Ir a Mercado Pago Developers",
+    tokenHint: "Usa el de producción para cobrar de verdad.",
     connect: "Conectar",
     connected: "Mercado Pago conectado.",
     disconnect: "Desconectar",
@@ -2169,6 +2178,7 @@ export const es = {
     invalid_color: "Usa un color como #0f766e.",
     invalid_range: "El rango de fechas no es válido.",
     slug_taken: "Otro negocio ya usa este enlace.",
+    slug_locked: "El enlace de un negocio no se puede cambiar.",
     slug_too_short: "Usa al menos 3 caracteres.",
     slug_too_long: "Usa máximo 60 caracteres.",
     slug_invalid_characters: "Solo minúsculas, números y guiones (sin guion al inicio o al final).",

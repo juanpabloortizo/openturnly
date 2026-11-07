@@ -45,13 +45,11 @@ describe("businesses", () => {
     const updated = await owner.patch(`/api/businesses/${business.id}`, {
       phone: "+57 300 123 4567",
       email: "",
-      slug: "fte-barber-studio",
     });
     expect(updated.status).toBe(200);
     expect(updated.body.business).toMatchObject({
       phone: "+57 300 123 4567",
       email: null,
-      slug: "fte-barber-studio",
     });
 
     // The booking page look: a hex accent and a background style, shown publicly.
@@ -60,7 +58,7 @@ describe("businesses", () => {
       pageTheme: "aurora",
     });
     expect(colors.body.business).toMatchObject({ brandColor: "#0f766e", pageTheme: "aurora" });
-    const page = await app.client().get("/api/public/businesses/fte-barber-studio");
+    const page = await app.client().get("/api/public/businesses/fte-barber");
     expect(page.body.business).toMatchObject({ brandColor: "#0f766e", pageTheme: "aurora" });
     const badTheme = await owner.patch(`/api/businesses/${business.id}`, { pageTheme: "neon" });
     expect(badTheme.status).toBe(400);
@@ -170,6 +168,21 @@ describe("businesses", () => {
       .where(eq(users.email, "staff@example.com"));
     expect(staff?.n).toBe(1);
     expect((await member.get(base)).status).toBe(404);
+  });
+
+  it("keeps a business's slug once it exists", async () => {
+    const app = await createTestApp();
+    const owner = await setUpOwner(app);
+    const business = await createBusiness(owner, { name: "Spa Luna", slug: "spa-luna" });
+    const moved = await owner.patch(`/api/businesses/${business.id}`, { slug: "spa-sol" });
+    expect(moved.status).toBe(409);
+    expect(moved.body.error.code).toBe("slug_locked");
+    const same = await owner.patch(`/api/businesses/${business.id}`, {
+      name: "Spa Sol",
+      slug: "spa-luna",
+    });
+    expect(same.status).toBe(200);
+    expect(same.body.business).toMatchObject({ name: "Spa Sol", slug: "spa-luna" });
   });
 
   it("rejects invalid, reserved and duplicate slugs", async () => {

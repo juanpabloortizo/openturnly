@@ -123,7 +123,7 @@ function GeneralTab({
       {/* The save bar floats while these cards are on screen. */}
       <div>
         <div className="space-y-6">
-          <InfoCard form={form} />
+          <InfoCard form={form} slugLocked={!business.sample} />
           <RegionCard form={form} />
         </div>
         <SaveBar
@@ -331,7 +331,7 @@ type GeneralForm = ReturnType<
 >;
 
 /** Who the business is and how to reach it: everything its booking page shows about it. */
-function InfoCard({ form }: { form: GeneralForm }) {
+function InfoCard({ form, slugLocked }: { form: GeneralForm; slugLocked: boolean }) {
   const { t } = useTranslation();
   return (
     <SettingsCard title={t("settings.infoTitle")} description={t("settings.infoHint")}>
@@ -345,10 +345,15 @@ function InfoCard({ form }: { form: GeneralForm }) {
             />
           )}
         </Field>
-        <Field label={t("fields.slug")} error={form.error("slug")}>
+        <Field
+          label={t("fields.slug")}
+          hint={slugLocked ? t("fields.slugLocked") : undefined}
+          error={form.error("slug")}
+        >
           {(props) => (
             <SlugInput
               {...props}
+              disabled={slugLocked}
               value={form.values.slug}
               onChange={(event) => form.set("slug", event.target.value.toLowerCase())}
             />

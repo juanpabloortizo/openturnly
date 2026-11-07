@@ -22,7 +22,7 @@ async function fakeWhatsapp() {
     sendError: null as { code: number; message: string } | null,
     templates: [
       {
-        name: "appointment_reminder",
+        name: "recordatorio_cita",
         language: "es",
         status: "APPROVED",
         category: "UTILITY",
@@ -109,7 +109,7 @@ async function shop(options: { installNumber?: boolean } = {}) {
         {
           id: "message",
           type: "whatsapp",
-          template: "appointment_reminder",
+          template: "recordatorio_cita",
           language: "es",
           variables: [
             { name: "customer_name", value: "{{customer.first_name}}" },
@@ -163,7 +163,7 @@ describe("WhatsApp", () => {
       to: "573001234567",
       type: "template",
       template: {
-        name: "appointment_reminder",
+        name: "recordatorio_cita",
         language: { code: "es" },
         components: [
           {
@@ -273,7 +273,7 @@ describe("WhatsApp", () => {
         name: "Prueba",
         trigger: "created",
         actions: [
-          { id: "message", type: "whatsapp", template: "appointment_reminder", language: "es" },
+          { id: "message", type: "whatsapp", template: "recordatorio_cita", language: "es" },
         ],
       },
     });
@@ -333,7 +333,7 @@ describe("WhatsApp", () => {
         {
           id: "hour",
           type: "whatsapp",
-          template: "appointment_reminder",
+          template: "recordatorio_cita",
           language: "es",
           variables: [{ name: "appointment_time", value: "{{appointment.time_text}}" }],
         },

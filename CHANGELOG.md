@@ -22,6 +22,10 @@ All notable changes to OpenTurnly are documented here. The format follows
 
 ### Changed
 
+- A business's link can't change once the business exists, because its booking page, QR codes,
+  embeds and MCP clients all depend on it. A sample business can still change it.
+- The ready-made WhatsApp templates carry the booking code, and their names are now in Spanish:
+  `confirmacion_cita`, `recordatorio_cita`, `cita_reprogramada` and `cita_cancelada`.
 - The sign-in, setup and invitation pages are new: the form on a floating card, and beside it a
   line and a live look at a day in the calendar, in your brand colour. The language switch moved
   to the corner.

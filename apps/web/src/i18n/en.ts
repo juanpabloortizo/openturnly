@@ -522,7 +522,10 @@ export const en: Messages<typeof es> = {
     passwordHint: "At least 10 characters.",
     businessName: "Business name",
     slug: "Booking link",
-    slugHint: "Lowercase letters, numbers and hyphens. This is the link you share with customers.",
+    slugHint:
+      "Lowercase letters, numbers and hyphens. Check it carefully: it can't be changed once the business exists.",
+    slugLocked:
+      "This can't be changed: your booking page, QR codes and integrations depend on this link.",
     timezone: "Time zone",
     currency: "Currency",
     locale: "Booking page language",
@@ -1667,8 +1670,15 @@ export const en: Messages<typeof es> = {
     title: "Mercado Pago",
     description: "Customers pay when they book and the money goes straight to your account.",
     token: "Access Token",
-    tokenHint:
-      "You'll find it in Mercado Pago Developers → Your integrations → Credentials. To charge for real, use the production one.",
+    guideTitle: "How to connect your account",
+    guideStep1:
+      "Sign in to Mercado Pago Developers with the business's account and create an application.",
+    guideStep2:
+      "Open it, switch to Production and activate the credentials with your industry and website.",
+    guideStep3: "Copy the production Access Token.",
+    guideStep4: "Paste it below and choose Connect.",
+    guideLink: "Go to Mercado Pago Developers",
+    tokenHint: "Use the production one to charge for real.",
     connect: "Connect",
     connected: "Mercado Pago connected.",
     disconnect: "Disconnect",
@@ -2153,6 +2163,7 @@ export const en: Messages<typeof es> = {
     invalid_color: "Use a colour like #0f766e.",
     invalid_range: "Invalid date range.",
     slug_taken: "Another business already uses this link.",
+    slug_locked: "A business's link can't be changed.",
     slug_too_short: "Use at least 3 characters.",
     slug_too_long: "Use at most 60 characters.",
     slug_invalid_characters:
