@@ -1,4 +1,4 @@
-import type { PaymentMethod } from "@openturnly/core";
+import type { MoneyMethod, PaymentMethod } from "@openturnly/core";
 import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import {
   cashMovements,
@@ -17,11 +17,12 @@ const MONEY = ["cash", "card", "transfer", "other"] as const;
 
 type Filter = { businessId: string; locationId?: string; from: Date; to: Date };
 
-const emptyByMethod = (): Record<PaymentMethod, number> => ({
+const emptyByMethod = (): Record<MoneyMethod, number> => ({
   cash: 0,
   card: 0,
   transfer: 0,
   other: 0,
+  online: 0,
 });
 
 /**

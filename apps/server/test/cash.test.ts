@@ -93,7 +93,13 @@ describe("cash register", () => {
       expenses: 7_000,
       result: 83_000,
     });
-    expect(report.byMethod).toEqual({ cash: 18_000, card: 15_000, transfer: 50_000, other: 0 });
+    expect(report.byMethod).toEqual({
+      cash: 18_000,
+      card: 15_000,
+      transfer: 50_000,
+      other: 0,
+      online: 0,
+    });
     // Cash: 10.000 deposit + 5.000 + 8.000 + 2.000 − 7.000.
     expect(report.cashInDrawer).toBe(18_000);
 

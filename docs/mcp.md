@@ -69,4 +69,6 @@ hours → Online booking → Customer changes** (2 hours by default, or "only th
 - Keys skip the booking page's anti-bot puzzle (they are trusted like the business), but
   per-customer limits and booking rules still apply. Each key can make 240 requests per
   minute.
+- Agents don't charge: an appointment they book is confirmed without payment, even if the
+  service asks for one ([docs/payments.md](docs/payments.md)).
 - The same admin key also works with OpenTurnly's HTTP API under `/api/businesses/<id>/…`.

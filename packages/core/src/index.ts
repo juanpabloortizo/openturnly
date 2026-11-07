@@ -1,6 +1,7 @@
 export * from "./availability.ts";
 export * from "./email.ts";
 export * from "./money.ts";
+export * from "./payments.ts";
 export * from "./phone.ts";
 export * from "./schemas.ts";
 export * from "./short-id.ts";

@@ -44,6 +44,7 @@ export async function createTestApp(
     webDistDir?: string;
     whatsapp?: Config["whatsapp"];
     whatsappApiUrl?: string;
+    mercadopagoApiUrl?: string;
     whatsappCallbackTag?: string;
     email?: Config["email"];
   } = {},
@@ -62,6 +63,7 @@ export async function createTestApp(
     allowPrivateWebhooks: options.allowPrivateWebhooks ?? true,
     whatsapp: options.whatsapp ?? null,
     whatsappApiUrl: options.whatsappApiUrl ?? "http://127.0.0.1:1",
+    mercadopagoApiUrl: options.mercadopagoApiUrl ?? "http://127.0.0.1:1",
     whatsappCallbackTag: options.whatsappCallbackTag ?? null,
     email: options.email ?? null,
   };

@@ -167,6 +167,8 @@ export function AppointmentsList({
           <Badge tone="danger">{t("agenda.statusCancelled")}</Badge>
         ) : appointment.status === "no_show" ? (
           <Badge tone="warning">{t("agenda.statusNoShow")}</Badge>
+        ) : appointment.status === "pending_payment" ? (
+          <Badge tone="warning">{t("agenda.statusPendingPayment")}</Badge>
         ) : Date.parse(appointment.startsAt) > now ? (
           <Badge tone="brand">{t("agenda.statusUpcoming")}</Badge>
         ) : (

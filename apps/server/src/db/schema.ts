@@ -10,12 +10,14 @@ import {
   DEFAULT_BOOKING_FORM,
   GENDERS,
   GIFT_CARD_KINDS,
+  MONEY_METHODS,
   PAGE_THEMES,
   PAYMENT_METHODS,
   PRODUCT_ATTRIBUTE_KINDS,
   PRODUCT_UNITS,
   SALE_ITEM_KINDS,
   SALE_PAYMENT_METHODS,
+  SERVICE_PAYMENT_MODES,
   STOCK_MOVEMENT_KINDS,
 } from "@openturnly/core";
 import {
@@ -300,6 +302,10 @@ export const services = pgTable(
     durationMin: integer("duration_min").notNull(),
     /** Minor currency units. Null: price shown as "ask at the business". */
     priceAmount: bigint("price_amount", { mode: "number" }),
+    /** What the booking page asks for online, while the business takes payments there. */
+    paymentMode: text("payment_mode", { enum: SERVICE_PAYMENT_MODES }).notNull().default("none"),
+    /** With `paymentMode` "deposit": how much, in minor units. */
+    depositAmount: bigint("deposit_amount", { mode: "number" }),
     active: boolean("active").notNull().default(true),
     position: integer("position").notNull().default(0),
     createdAt: createdAt(),
@@ -496,8 +502,18 @@ export const customers = pgTable(
   ],
 );
 
-/** "no_show": it was confirmed and the customer didn't come; it frees the time it had. */
-export const APPOINTMENT_STATUSES = ["confirmed", "cancelled", "no_show"] as const;
+/**
+ * "no_show": it was confirmed and the customer didn't come; it frees the time it had.
+ * "pending_payment": booked online and held while the customer pays (see lib/payments.ts).
+ */
+export const APPOINTMENT_STATUSES = [
+  "confirmed",
+  "cancelled",
+  "no_show",
+  "pending_payment",
+] as const;
+/** The ones that take up the time they're booked for. */
+export const BUSY_STATUSES = ["confirmed", "pending_payment"] as const;
 export const APPOINTMENT_SOURCES = ["online", "admin", "agent"] as const;
 export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
 
@@ -880,7 +896,7 @@ export const deposits = pgTable(
       onDelete: "set null",
     }),
     amount: bigint("amount", { mode: "number" }).notNull(),
-    method: text("method", { enum: PAYMENT_METHODS }).notNull(),
+    method: text("method", { enum: MONEY_METHODS }).notNull(),
     note: text("note"),
     status: text("status", { enum: DEPOSIT_STATUSES }).notNull().default("active"),
     /** The sale it paid for, once used. */
@@ -976,6 +992,84 @@ export const whatsappConnections = pgTable("whatsapp_connections", {
   updatedAt: updatedAt(),
 });
 
+/**
+ * A business's own Mercado Pago account: what customers pay online goes straight to it. The
+ * access token is encrypted (see lib/secrets.ts) and never leaves the server. There's one
+ * row per business at most.
+ */
+export const paymentConnections = pgTable(
+  "payment_connections",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    encryptedAccessToken: text("encrypted_access_token").notNull(),
+    /** Who Mercado Pago said the token belongs to, when it was connected. */
+    accountId: text("account_id").notNull(),
+    accountName: text("account_name"),
+    /** Mercado Pago's country code, e.g. MCO for Colombia. */
+    siteId: text("site_id").notNull(),
+    /** A test account: no real money moves. */
+    testMode: boolean("test_mode").notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [uniqueIndex("payment_connections_business_idx").on(table.businessId)],
+);
+
+export const ONLINE_PAYMENT_STATUSES = [
+  "pending",
+  "paid",
+  "failed",
+  "cancelled",
+  /** The customer gave it up, by cancelling it or by booking something else instead. */
+  "abandoned",
+  /** Money that arrived too late to keep the time, on its way back to the customer. */
+  "refunding",
+  "refunded",
+] as const;
+export type OnlinePaymentStatus = (typeof ONLINE_PAYMENT_STATUSES)[number];
+
+/**
+ * What a customer owes to confirm an appointment booked online, from the moment the time is
+ * held. Once paid, the money is a deposit of that appointment (`depositId`).
+ */
+export const onlinePayments = pgTable(
+  "online_payments",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    appointmentId: text("appointment_id").references(() => appointments.id, {
+      onDelete: "set null",
+    }),
+    /** Mercado Pago's order; null until it's created, right after the time is held. */
+    orderId: text("order_id"),
+    checkoutUrl: text("checkout_url"),
+    amount: bigint("amount", { mode: "number" }).notNull(),
+    currency: text("currency").notNull(),
+    status: text("status", { enum: ONLINE_PAYMENT_STATUSES }).notNull().default("pending"),
+    depositId: text("deposit_id").references(() => deposits.id, { onDelete: "set null" }),
+    /** When the time stops being held if nothing was paid. */
+    expiresAt: instant("expires_at").notNull(),
+    /** Last time Mercado Pago was asked about it. */
+    checkedAt: instant("checked_at"),
+    /** When it stopped waiting unpaid. The order is still watched for a while after. */
+    closedAt: instant("closed_at"),
+    paidAt: instant("paid_at"),
+    refundedAt: instant("refunded_at"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("online_payments_order_idx").on(table.orderId),
+    index("online_payments_status_idx").on(table.status, table.expiresAt),
+    index("online_payments_appointment_idx").on(table.appointmentId),
+  ],
+);
+
 export const EMAIL_STATUSES = ["disconnected", "connected", "error"] as const;
 
 /**
@@ -1052,6 +1146,8 @@ export type Appointment = typeof appointments.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type Sale = typeof sales.$inferSelect;
 export type Deposit = typeof deposits.$inferSelect;
+export type PaymentConnection = typeof paymentConnections.$inferSelect;
+export type OnlinePayment = typeof onlinePayments.$inferSelect;
 export type GiftCard = typeof giftCards.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type Automation = typeof automations.$inferSelect;

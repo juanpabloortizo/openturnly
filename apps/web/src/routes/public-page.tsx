@@ -7,6 +7,7 @@ import {
   formatPrice,
   GENDERS,
   instantToZoned,
+  paymentDueNow,
   todayIn,
 } from "@openturnly/core";
 import type { TFunction } from "i18next";
@@ -16,11 +17,13 @@ import {
   Check,
   ChevronLeft,
   Clock,
+  CreditCard,
   LoaderCircle,
   MapPin,
   RotateCcw,
   Search,
   Users,
+  X,
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -31,14 +34,30 @@ import { BookingBackdrop, isDarkTheme } from "../components/booking-backdrop.tsx
 import { BookingHeader } from "../components/booking-header.tsx";
 import { MonthCalendar } from "../components/month-calendar.tsx";
 import { PhoneInput } from "../components/phone-input.tsx";
-import { Alert, Button, Field, Input, Select, Spinner, Textarea } from "../components/ui.tsx";
+import {
+  Alert,
+  Button,
+  buttonClass,
+  Field,
+  Input,
+  Select,
+  Spinner,
+  Textarea,
+} from "../components/ui.tsx";
 import {
   ApiError,
   type BookedAppointment,
   type PublicBusiness,
   type PublicCatalog,
 } from "../lib/api.ts";
-import { useAvailability, useBook, useGiftCodeCheck, usePublicCatalog } from "../lib/booking.ts";
+import {
+  useAvailability,
+  useBook,
+  useCancelPayment,
+  useGiftCodeCheck,
+  usePaymentState,
+  usePublicCatalog,
+} from "../lib/booking.ts";
 import { brandStyle } from "../lib/brand.ts";
 import { cn } from "../lib/cn.ts";
 import { formatDay, formatDuration } from "../lib/format.ts";
@@ -230,7 +249,7 @@ function BookingWizard({
     "details",
     "confirm",
   ];
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const linked = locations.find((place) => place.id === searchParams.get("local"));
 
   const [stepIndex, setStepIndex] = useState(severalLocations && linked ? 1 : 0);
@@ -262,6 +281,13 @@ function BookingWizard({
   const [booked, setBooked] = useState<BookedAppointment | null>(null);
   // A discount code that worked for the chosen service.
   const [gift, setGift] = useState<{ code: string; discountAmount: number } | null>(null);
+  // Where paying online is optional: whether they chose to pay now.
+  const [payNow, setPayNow] = useState(true);
+  // The page is on its way to the payment form: the button keeps spinning until it's gone.
+  const [leaving, setLeaving] = useState(false);
+  // Inside another website the payment form opens in a new tab; this page waits for it.
+  const [waitingFor, setWaitingFor] = useState<string | null>(null);
+  const paymentId = waitingFor ?? searchParams.get("payment");
   // The anti-bot puzzle is solved in the background from the moment a time is being chosen.
   const takeProof = useBookingProof(slug, stepIndex >= steps.indexOf("datetime"));
   const book = useBook(slug, takeProof);
@@ -333,6 +359,24 @@ function BookingWizard({
 
   const price = (amount: number | null) =>
     amount === null ? t("services.priceOnRequest") : formatPrice(amount, business.currency);
+  const toPay = (service?.priceAmount ?? 0) - (gift?.discountAmount ?? 0);
+  const dueNow = service ? paymentDueNow(service, toPay, payNow) : 0;
+
+  const startOver = () => {
+    setBooked(null);
+    setWaitingFor(null);
+    const kept = new URLSearchParams();
+    for (const name of ["embed", "local"]) {
+      const value = searchParams.get(name);
+      if (value !== null) kept.set(name, value);
+    }
+    setSearchParams(kept, { replace: true });
+    if (severalLocations) setLocationId(null);
+    setServiceId(null);
+    setDate(null);
+    setTime(null);
+    setStepIndex(0);
+  };
 
   const confirm = () => {
     if (!service || !date || !time || !details) return;
@@ -346,12 +390,21 @@ function BookingWizard({
         customer: details.customer,
         answers: Object.fromEntries(details.answers.map((answer) => [answer.id, answer.value])),
         ...(gift ? { giftCode: gift.code } : {}),
+        ...(service.paymentMode === "optional" ? { payNow } : {}),
         website,
       },
       {
-        onSuccess: (appointment) => {
+        onSuccess: ({ appointment, payment }) => {
           writeSavedCustomer(slug, details.customer);
-          setBooked(appointment);
+          if (!payment?.checkoutUrl) {
+            setBooked(appointment);
+          } else if (searchParams.has("embed") && window.parent !== window) {
+            window.open(payment.checkoutUrl, "_blank");
+            setWaitingFor(payment.id);
+          } else {
+            setLeaving(true);
+            window.location.assign(payment.checkoutUrl);
+          }
         },
         onError: (error) => {
           const code = error instanceof ApiError ? error.code : "unknown_error";
@@ -417,6 +470,22 @@ function BookingWizard({
     }
   };
 
+  if (paymentId) {
+    return (
+      <div className="mt-6 border-t border-zinc-100">
+        <PaymentResult
+          slug={slug}
+          paymentId={paymentId}
+          showLocation={severalLocations}
+          timeZone={business.timezone}
+          t={t}
+          locale={locale}
+          onAgain={startOver}
+        />
+      </div>
+    );
+  }
+
   if (booked) {
     return (
       <div className="mt-6 border-t border-zinc-100">
@@ -425,14 +494,7 @@ function BookingWizard({
           showLocation={severalLocations}
           t={t}
           locale={locale}
-          onAgain={() => {
-            setBooked(null);
-            if (severalLocations) setLocationId(null);
-            setServiceId(null);
-            setDate(null);
-            setTime(null);
-            setStepIndex(0);
-          }}
+          onAgain={startOver}
         />
       </div>
     );
@@ -694,6 +756,24 @@ function BookingWizard({
                 ? formatPrice(service.priceAmount - gift.discountAmount, business.currency)
                 : price(service.priceAmount)
             }
+            paid={
+              dueNow > 0
+                ? {
+                    label: t("booking.payNow"),
+                    amount: formatPrice(dueNow, business.currency),
+                    rest: toPay - dueNow,
+                    currency: business.currency,
+                  }
+                : undefined
+            }
+            t={t}
+          />
+        )}
+        {step === "confirm" && service?.paymentMode === "optional" && toPay > 0 && (
+          <PayChoice
+            payNow={payNow}
+            onChange={setPayNow}
+            amount={formatPrice(toPay, business.currency)}
             t={t}
           />
         )}
@@ -717,9 +797,19 @@ function BookingWizard({
           {/* Distinct keys: reusing one <button> whose type flips to "submit" mid-click
               would submit the details form the moment it appears. */}
           {step === "confirm" ? (
-            <Button key="confirm" onClick={() => settled() && confirm()} loading={book.isPending}>
-              <CalendarCheck className="size-4" aria-hidden />
-              {t("booking.confirm")}
+            <Button
+              key="confirm"
+              onClick={() => settled() && confirm()}
+              loading={book.isPending || leaving}
+            >
+              {dueNow > 0 ? (
+                <CreditCard className="size-4" aria-hidden />
+              ) : (
+                <CalendarCheck className="size-4" aria-hidden />
+              )}
+              {dueNow > 0
+                ? t("booking.payAndBook", { amount: formatPrice(dueNow, business.currency) })
+                : t("booking.confirm")}
             </Button>
           ) : step === "details" ? (
             <Button
@@ -1331,10 +1421,13 @@ function DateTimeStep({
 function Summary({
   rows,
   total,
+  paid,
   t,
 }: {
   rows: { label: string; value: string }[];
   total: string;
+  /** What's paid online, instead of everything at the business. */
+  paid?: { label: string; amount: string; rest: number; currency: string };
   t: T;
 }) {
   return (
@@ -1352,22 +1445,194 @@ function Summary({
       <div className="flex items-center justify-between border-t border-zinc-200 bg-zinc-50 px-5 py-4">
         <div>
           <span className="font-medium text-zinc-900">{t("booking.total")}</span>
-          <p className="text-xs text-zinc-500">{t("booking.payAtBusiness")}</p>
+          {!paid && <p className="text-xs text-zinc-500">{t("booking.payAtBusiness")}</p>}
         </div>
         <span className="text-xl font-semibold text-zinc-900 tabular-nums">{total}</span>
       </div>
+      {paid && (
+        <div className="flex items-center justify-between border-t border-zinc-200 px-5 py-3">
+          <div>
+            <span className="text-sm font-medium text-zinc-900">{paid.label}</span>
+            {paid.rest > 0 && (
+              <p className="text-xs text-zinc-500">
+                {t("booking.payRest", { amount: formatPrice(paid.rest, paid.currency) })}
+              </p>
+            )}
+          </div>
+          <span className="font-semibold text-zinc-900 tabular-nums">{paid.amount}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Where paying online is optional: now, or at the business. */
+function PayChoice({
+  payNow,
+  onChange,
+  amount,
+  t,
+}: {
+  payNow: boolean;
+  onChange: (payNow: boolean) => void;
+  amount: string;
+  t: T;
+}) {
+  const options = [
+    { value: true, title: t("booking.payChoiceNow"), body: amount },
+    { value: false, title: t("booking.payChoiceLater"), body: t("booking.payChoiceLaterBody") },
+  ];
+  return (
+    <fieldset className="mt-4 grid gap-2 sm:grid-cols-2">
+      <legend className="sr-only">{t("booking.payChoiceTitle")}</legend>
+      {options.map((option) => (
+        <label
+          key={String(option.value)}
+          className={cn(
+            "flex cursor-pointer items-start gap-2.5 rounded-xl border p-3.5 text-sm transition-colors",
+            payNow === option.value
+              ? "border-brand-500 ring-1 ring-brand-500"
+              : "border-zinc-200 hover:border-zinc-300",
+          )}
+        >
+          <input
+            type="radio"
+            name="pay-choice"
+            className="mt-0.5 accent-brand-600"
+            checked={payNow === option.value}
+            onChange={() => onChange(option.value)}
+          />
+          <span>
+            <span className="block font-medium text-zinc-900">{option.title}</span>
+            <span className="block text-[13px] text-zinc-500">{option.body}</span>
+          </span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
+/** The page customers come back to from paying: it follows the payment until it's decided. */
+function PaymentResult({
+  slug,
+  paymentId,
+  showLocation,
+  timeZone,
+  t,
+  locale,
+  onAgain,
+}: {
+  slug: string;
+  paymentId: string;
+  showLocation: boolean;
+  timeZone: string;
+  t: T;
+  locale: string;
+  onAgain: () => void;
+}) {
+  const state = usePaymentState(slug, paymentId);
+  const cancel = useCancelPayment(slug, paymentId);
+  if (state.isPending) return <Spinner className="py-24" />;
+  const payment = state.data?.payment;
+  const appointment = state.data?.appointment;
+  if (payment?.status === "paid" && appointment) {
+    return (
+      <BookingDone
+        appointment={appointment}
+        paid={payment.amount}
+        showLocation={showLocation}
+        t={t}
+        locale={locale}
+        onAgain={onAgain}
+      />
+    );
+  }
+  if (payment?.status === "pending") {
+    const until = instantToZoned(Date.parse(payment.expiresAt), timeZone).time;
+    return (
+      <div className="flex flex-col items-center px-5 py-14 text-center sm:px-8">
+        <LoaderCircle className="size-9 animate-spin text-brand-600" aria-hidden />
+        <h2 className="mt-5 text-xl font-semibold text-zinc-900">
+          {t("booking.paymentWaitingTitle")}
+        </h2>
+        <p className="mt-2 max-w-sm text-sm text-zinc-500">
+          {t("booking.paymentWaitingBody", { time: until })}
+        </p>
+        {payment.checkoutUrl && (
+          <a
+            href={payment.checkoutUrl}
+            className={buttonClass({ variant: "secondary", className: "mt-6" })}
+          >
+            <CreditCard className="size-4" aria-hidden />
+            {t("booking.paymentGoPay")}
+          </a>
+        )}
+        <button
+          type="button"
+          className="mt-4 text-sm font-medium text-zinc-500 hover:text-zinc-800 disabled:opacity-50"
+          disabled={cancel.isPending}
+          onClick={() =>
+            cancel.mutate(undefined, {
+              onSuccess: ({ payment: closed }) => {
+                if (closed.status === "abandoned") onAgain();
+              },
+            })
+          }
+        >
+          {t("booking.paymentCancel")}
+        </button>
+      </div>
+    );
+  }
+  if (payment?.status === "refunding" || payment?.status === "refunded") {
+    return (
+      <div className="flex flex-col items-center px-5 py-14 text-center sm:px-8">
+        <span className="grid size-14 place-items-center rounded-full bg-amber-100 text-amber-600">
+          <RotateCcw className="size-7" aria-hidden />
+        </span>
+        <h2 className="mt-5 text-xl font-semibold text-zinc-900">
+          {t("booking.paymentRefundTitle")}
+        </h2>
+        <p className="mt-2 max-w-sm text-sm text-zinc-500">
+          {t("booking.paymentRefundBody", {
+            amount: formatPrice(payment.amount, payment.currency),
+          })}
+        </p>
+        <Button className="mt-6" onClick={onAgain}>
+          <RotateCcw className="size-4" aria-hidden />
+          {t("booking.bookAgain")}
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col items-center px-5 py-14 text-center sm:px-8">
+      <span className="grid size-14 place-items-center rounded-full bg-red-100 text-red-600">
+        <X className="size-7" strokeWidth={3} aria-hidden />
+      </span>
+      <h2 className="mt-5 text-xl font-semibold text-zinc-900">
+        {t("booking.paymentFailedTitle")}
+      </h2>
+      <p className="mt-2 max-w-sm text-sm text-zinc-500">{t("booking.paymentFailedBody")}</p>
+      <Button className="mt-6" onClick={onAgain}>
+        <RotateCcw className="size-4" aria-hidden />
+        {t("booking.bookAgain")}
+      </Button>
     </div>
   );
 }
 
 function BookingDone({
   appointment,
+  paid,
   showLocation,
   t,
   locale,
   onAgain,
 }: {
   appointment: BookedAppointment;
+  /** How much was paid online, when it was. */
+  paid?: number;
   showLocation: boolean;
   t: T;
   locale: string;
@@ -1379,7 +1644,9 @@ function BookingDone({
         <Check className="size-7" strokeWidth={3} aria-hidden />
       </span>
       <h2 className="mt-5 text-xl font-semibold text-zinc-900">{t("booking.doneTitle")}</h2>
-      <p className="mt-2 max-w-sm text-sm text-zinc-500">{t("booking.doneBody")}</p>
+      <p className="mt-2 max-w-sm text-sm text-zinc-500">
+        {t(paid ? "booking.donePaidBody" : "booking.doneBody")}
+      </p>
       <div className="mt-5 rounded-xl border border-dashed border-zinc-300 px-6 py-3">
         <p className="text-xs font-medium text-zinc-500">{t("booking.code")}</p>
         <p className="mt-0.5 font-mono text-2xl font-semibold tracking-[0.2em] text-zinc-900">
@@ -1423,6 +1690,16 @@ function BookingDone({
                   appointment.priceAmount - appointment.discountAmount,
                   appointment.currency,
                 )
+          }
+          paid={
+            paid
+              ? {
+                  label: t("booking.paidOnline"),
+                  amount: formatPrice(paid, appointment.currency),
+                  rest: (appointment.priceAmount ?? 0) - appointment.discountAmount - paid,
+                  currency: appointment.currency,
+                }
+              : undefined
           }
           t={t}
         />

@@ -133,7 +133,12 @@ export function AgendaPage() {
     .filter((appointment) => !locationFilter || appointment.locationId === locationFilter)
     .map((appointment) => {
       // A no-show keeps its place on the calendar, greyed out.
-      const color = appointment.status === "no_show" ? "#a1a1aa" : colorOf(appointment.resourceId);
+      const color =
+        appointment.status === "no_show"
+          ? "#a1a1aa"
+          : appointment.status === "pending_payment"
+            ? "#d97706"
+            : colorOf(appointment.resourceId);
       return {
         id: appointment.id,
         title: `${appointment.customer.firstName} ${appointment.customer.lastName}`,
@@ -539,15 +544,23 @@ function AppointmentDetails({
 
   const cancelled = appointment.status === "cancelled";
   const noShow = appointment.status === "no_show";
+  // Held while the customer pays online: it confirms or frees itself within minutes.
+  const unpaid = appointment.status === "pending_payment";
   // Once it starts, the customer either came (and pays) or didn't.
   const started = Date.parse(appointment.startsAt) <= Date.now();
   const rows = [
     { label: t("booking.code"), value: appointment.code },
-    ...(cancelled || noShow
+    ...(cancelled || noShow || unpaid
       ? [
           {
             label: t("agenda.colStatus"),
-            value: t(noShow ? "agenda.statusNoShow" : "agenda.statusCancelled"),
+            value: t(
+              unpaid
+                ? "agenda.statusPendingPayment"
+                : noShow
+                  ? "agenda.statusNoShow"
+                  : "agenda.statusCancelled",
+            ),
           },
         ]
       : []),
@@ -653,7 +666,7 @@ function AppointmentDetails({
                 {t("agenda.undoNoShow")}
               </Button>
             </>
-          ) : cancelled ? (
+          ) : cancelled || unpaid ? (
             <Button variant="secondary" onClick={onClose}>
               {t("common.close")}
             </Button>
@@ -696,7 +709,8 @@ function AppointmentDetails({
           </div>
         ))}
       </dl>
-      {!isProfessional && !cancelled && !noShow && (
+      {unpaid && <p className="mt-4 text-sm text-zinc-500">{t("agenda.pendingPaymentHint")}</p>}
+      {!isProfessional && !cancelled && !noShow && !unpaid && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 px-4 py-3">
           {appointment.sale ? (
             <>

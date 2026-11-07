@@ -1,9 +1,25 @@
-import { serviceSchema } from "@openturnly/core";
+import { servicePaymentProblem, serviceSchema } from "@openturnly/core";
 import { and, asc, eq, inArray, max } from "drizzle-orm";
 import { Hono } from "hono";
-import { locationServices, resourceServices, resources, services } from "../db/schema.ts";
+import {
+  locationServices,
+  resourceServices,
+  resources,
+  type Service,
+  services,
+} from "../db/schema.ts";
 import { apiError, type BusinessEnv, type Deps, parseBody } from "../lib/http.ts";
 import { allLocationIds, setServiceLocations } from "../lib/locations.ts";
+
+/** Refuses payment settings that don't fit the price (a deposit above it, for example). */
+function checkPayment(input: {
+  paymentMode: Service["paymentMode"];
+  depositAmount: number | null;
+  priceAmount: number | null;
+}) {
+  const problem = servicePaymentProblem(input, input.priceAmount);
+  if (problem) throw apiError(400, "validation_failed", { depositAmount: problem });
+}
 
 export function serviceRoutes({ db }: Deps) {
   const findService = async (businessId: string, serviceId: string) => {
@@ -47,6 +63,11 @@ export function serviceRoutes({ db }: Deps) {
     .post("/", async (c) => {
       const business = c.get("business");
       const { locationIds, ...input } = await parseBody(c, serviceSchema);
+      checkPayment({
+        paymentMode: input.paymentMode ?? "none",
+        depositAmount: input.depositAmount ?? null,
+        priceAmount: input.priceAmount,
+      });
       const service = await db.transaction(async (tx) => {
         const [last] = await tx
           .select({ position: max(services.position) })
@@ -82,6 +103,7 @@ export function serviceRoutes({ db }: Deps) {
       const businessId = c.get("business").id;
       const current = await findService(businessId, c.req.param("serviceId"));
       const { locationIds, ...input } = await parseBody(c, serviceSchema.partial());
+      checkPayment({ ...current, ...input });
       const service = await db.transaction(async (tx) => {
         const [updated] =
           Object.keys(input).length > 0

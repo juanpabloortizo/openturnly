@@ -143,6 +143,11 @@ A step can also message the customer, by WhatsApp (`src/lib/whatsapp.ts`) or ema
 Credentials are encrypted with `SECRET` (`src/lib/secrets.ts`), and WhatsApp's delivery updates
 arrive at `/api/public/whatsapp` signed with the app secret.
 
+Online payments (`src/lib/payments.ts`, [payments.md](payments.md)) belong to each business, not
+to the install. Booking holds the time as `pending_payment`; the order's state at Mercado Pago is
+what counts, read when the customer comes back, on a notification and on every sweep, so a lost
+notification changes nothing.
+
 ## Validation and errors
 
 The same Zod schemas from `@openturnly/core` validate forms in the browser and requests on

@@ -225,6 +225,20 @@
       "when": 1793938205730,
       "tag": "0031_channels_per_install",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793981777451,
+      "tag": "0032_online_payments",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793999474439,
+      "tag": "0033_late_online_payments",
+      "breakpoints": true
     }
   ]
 }

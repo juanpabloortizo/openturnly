@@ -1,6 +1,6 @@
 import type { BookingInput } from "@openturnly/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, api, type BookedAppointment, type PublicCatalog } from "./api.ts";
+import { ApiError, api, type BookingResult, type PaymentState, type PublicCatalog } from "./api.ts";
 
 export function usePublicCatalog(slug: string) {
   return useQuery({
@@ -44,12 +44,10 @@ export function useAvailability(
 export function useBook(slug: string, takeProof: () => Promise<string>) {
   const queryClient = useQueryClient();
   const send = async (input: BookingInput) =>
-    (
-      await api<{ appointment: BookedAppointment }>(`/api/public/businesses/${slug}/bookings`, {
-        method: "POST",
-        body: { ...input, proof: await takeProof() },
-      })
-    ).appointment;
+    api<BookingResult>(`/api/public/businesses/${slug}/bookings`, {
+      method: "POST",
+      body: { ...input, proof: await takeProof() },
+    });
   return useMutation({
     mutationFn: async (input: BookingInput) => {
       try {
@@ -62,6 +60,30 @@ export function useBook(slug: string, takeProof: () => Promise<string>) {
     },
     // Times change after any booking attempt, successful or not.
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["public", slug, "availability"] }),
+  });
+}
+
+/** A payment the customer is making or just made: asked again until it's decided. */
+export function usePaymentState(slug: string, paymentId: string) {
+  return useQuery({
+    queryKey: ["public", slug, "payment", paymentId],
+    queryFn: () => api<PaymentState>(`/api/public/businesses/${slug}/payments/${paymentId}`),
+    retry: false,
+    refetchInterval: (query) => (query.state.data?.payment.status === "pending" ? 3_000 : false),
+  });
+}
+
+/** Gives up on a payment, which frees its time. It stays paid if the money already arrived. */
+export function useCancelPayment(slug: string, paymentId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api<PaymentState>(`/api/public/businesses/${slug}/payments/${paymentId}/cancel`, {
+        method: "POST",
+      }),
+    onSuccess: (state) => {
+      queryClient.setQueryData(["public", slug, "payment", paymentId], state);
+    },
   });
 }
 

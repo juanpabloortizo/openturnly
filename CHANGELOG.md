@@ -15,6 +15,10 @@ All notable changes to OpenTurnly are documented here. The format follows
   [docs/email.md](docs/email.md).
 - **Channels**, in the account menu: where whoever runs the install connects WhatsApp and email
   for all of its businesses.
+- **Online payments** with Mercado Pago: each business connects its own account, and each
+  service can ask for a deposit or the full price when booking. The money goes straight to the
+  business, the time is held until it's paid, and a payment that arrives late either keeps the
+  appointment or goes back to the customer. See [docs/payments.md](docs/payments.md).
 
 ### Changed
 

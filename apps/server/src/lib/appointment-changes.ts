@@ -113,6 +113,7 @@ export async function findCustomerAppointment(
 
 /** Why an appointment that isn't confirmed any more can't be changed, charged or cancelled. */
 export function closedError(appointment: Pick<Appointment, "status">) {
+  if (appointment.status === "pending_payment") return apiError(409, "appointment_unpaid");
   return apiError(
     409,
     appointment.status === "no_show" ? "appointment_no_show" : "appointment_cancelled",

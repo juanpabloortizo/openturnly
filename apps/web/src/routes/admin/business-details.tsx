@@ -54,8 +54,9 @@ import { BookingFormCard, FormPreview } from "./booking-form.tsx";
 import { publicUrl, useBusinessContext } from "./business.tsx";
 import { UsersSection } from "./business-access.tsx";
 import { IntegrationsTab } from "./integrations.tsx";
+import { PaymentsTab } from "./payments.tsx";
 
-const TABS = ["general", "page", "integrations", "automations"] as const;
+const TABS = ["general", "page", "payments", "integrations", "automations"] as const;
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -75,6 +76,7 @@ export function SettingsPage() {
           { value: "page", label: t("settings.tabs.page") },
           ...(admin
             ? [
+                { value: "payments" as const, label: t("settings.tabs.payments") },
                 { value: "integrations" as const, label: t("settings.tabs.integrations") },
                 { value: "automations" as const, label: t("settings.tabs.automations") },
               ]
@@ -87,6 +89,7 @@ export function SettingsPage() {
           <GeneralTab business={business} admin={admin} owner={user.role === "owner"} />
         )}
         {tab === "page" && <PageTab business={business} />}
+        {tab === "payments" && admin && <PaymentsTab />}
         {tab === "integrations" && admin && <IntegrationsTab />}
         {tab === "automations" && admin && <AutomationsTab />}
       </div>

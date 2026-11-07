@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { hoursProblem } from "./availability.ts";
 import { EMAIL_PORTS, EMAIL_PROVIDER_IDS, EMAIL_TEMPLATE_NAMES } from "./email.ts";
+import { SERVICE_PAYMENT_MODES } from "./payments.ts";
 import { normalizePhone } from "./phone.ts";
 import { checkSlug } from "./slug.ts";
 import { addDays, isDateString, isTimeString } from "./time.ts";
@@ -9,8 +10,7 @@ export const LOCALES = ["es", "en"] as const;
 export type Locale = (typeof LOCALES)[number];
 
 /**
- * Currencies a business can price in: the active ISO 4217 codes. Prices are informative
- * only (customers pay at the business).
+ * Currencies a business can price in: the active ISO 4217 codes.
  */
 export const CURRENCIES = [
   "AED",
@@ -365,6 +365,10 @@ export const serviceSchema = z.object({
   /** Minor currency units (cents). Null means "ask at the business". */
   /** Always shown on the booking page; 0 for free services. */
   priceAmount: z.number().int().min(0).max(1e12),
+  /** What the booking page asks for online, once the business takes payments there. */
+  paymentMode: z.enum(SERVICE_PAYMENT_MODES).optional(),
+  /** With `paymentMode` "deposit": how much, in minor units. */
+  depositAmount: z.number().int().min(0).max(1e12).nullable().optional(),
   active: z.boolean().default(true),
   /** Where it is offered. Left out when creating: every location. */
   locationIds: z.array(z.string().min(1)).max(200).optional(),
@@ -699,6 +703,8 @@ export const bookingSchema = z.object({
   answers: z.record(z.string(), z.string()).nullish(),
   /** A discount code the customer typed. */
   giftCode: z.string().max(40).optional(),
+  /** On a service where paying online is optional: they chose to pay now. */
+  payNow: z.boolean().optional(),
   /** Honeypot: hidden from people, filled in by bots. Must stay empty. */
   website: z.string().max(0).optional(),
   /** Solved anti-bot puzzle (ALTCHA payload, base64 JSON), one per booking. */
@@ -707,6 +713,12 @@ export const bookingSchema = z.object({
 export type BookingInput = z.infer<typeof bookingSchema>;
 
 export const grantAccessSchema = z.object({ email });
+
+/** A business's own Mercado Pago account, connected with its access token. */
+export const paymentConnectionSchema = z.object({
+  accessToken: z.string().trim().min(10).max(300),
+});
+export type PaymentConnectionInput = z.infer<typeof paymentConnectionSchema>;
 
 /**
  * Access keys for a business's MCP server. "agent" is for bots that talk to customers:
@@ -1298,9 +1310,12 @@ export type PasswordChangeInput = z.input<typeof passwordChangeSchema>;
  */
 // --- Sales ----------------------------------------------------------------
 
-/** How customers pay at the counter. OpenTurnly records it; it doesn't take payments. */
+/** How customers pay at the counter: OpenTurnly records it. */
 export const PAYMENT_METHODS = ["cash", "card", "transfer", "other"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+/** Plus money paid on the booking page, which nobody picks by hand. */
+export const MONEY_METHODS = [...PAYMENT_METHODS, "online"] as const;
+export type MoneyMethod = (typeof MONEY_METHODS)[number];
 /** Plus what a sale can be paid with besides money: a deposit left before. */
 export const SALE_PAYMENT_METHODS = [...PAYMENT_METHODS, "deposit", "gift_card"] as const;
 export type SalePaymentMethod = (typeof SALE_PAYMENT_METHODS)[number];

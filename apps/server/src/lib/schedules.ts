@@ -3,6 +3,7 @@ import { and, eq, gt, gte, inArray, lt, lte, ne } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import {
   appointments,
+  BUSY_STATUSES,
   type Business,
   closures,
   holidayOverrides,
@@ -159,7 +160,7 @@ export async function loadSchedules(
     .where(
       and(
         eq(appointments.businessId, business.id),
-        eq(appointments.status, "confirmed"),
+        inArray(appointments.status, BUSY_STATUSES),
         lt(appointments.startsAt, windowEnd),
         gt(appointments.endsAt, windowStart),
         ignoreAppointmentId ? ne(appointments.id, ignoreAppointmentId) : undefined,

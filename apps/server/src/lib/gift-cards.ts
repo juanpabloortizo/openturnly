@@ -2,6 +2,7 @@ import { todayIn } from "@openturnly/core";
 import { and, count, eq, inArray, sql } from "drizzle-orm";
 import {
   appointments,
+  BUSY_STATUSES,
   type Business,
   type GiftCard,
   giftCards,
@@ -32,7 +33,9 @@ export async function giftCardUsage(db: Queryable, ids: string[]) {
     db
       .select({ id: appointments.giftCardId, total: count() })
       .from(appointments)
-      .where(and(inArray(appointments.giftCardId, ids), eq(appointments.status, "confirmed")))
+      .where(
+        and(inArray(appointments.giftCardId, ids), inArray(appointments.status, BUSY_STATUSES)),
+      )
       .groupBy(appointments.giftCardId),
     db
       .select({ id: sales.giftCardId, total: count() })
