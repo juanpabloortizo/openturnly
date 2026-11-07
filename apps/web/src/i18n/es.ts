@@ -1180,6 +1180,8 @@ export const es = {
     paidIn: "Venta #{{number}}",
     viewSale: "Ver venta",
     unpaid: "Sin cobrar",
+    dueLeft: "Faltan {{amount}} por cobrar",
+    closeSale: "Cerrar venta",
     depositLeft: "Abonó {{amount}}",
     code: "Código o gift card",
     apply: "Aplicar",

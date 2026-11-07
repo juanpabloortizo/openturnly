@@ -1173,6 +1173,8 @@ export const en: Messages<typeof es> = {
     paidIn: "Sale #{{number}}",
     viewSale: "View sale",
     unpaid: "Not charged",
+    dueLeft: "{{amount}} left to charge",
+    closeSale: "Close sale",
     depositLeft: "Left a {{amount}} deposit",
     code: "Code or gift card",
     apply: "Apply",

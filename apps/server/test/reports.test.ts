@@ -1,5 +1,6 @@
 import { addDays, todayIn, weekdayOf } from "@openturnly/core";
 import { describe, expect, it } from "vitest";
+import { appointments } from "../src/db/schema.ts";
 import { createBusiness, createTestApp, setUpOwner } from "./helpers.ts";
 
 describe("reports", () => {
@@ -108,5 +109,48 @@ describe("reports", () => {
         total: 19_400,
       }),
     ]);
+  });
+
+  it("counts an appointment as paid once its deposits cover the price", async () => {
+    const app = await createTestApp();
+    const owner = await setUpOwner(app);
+    const business = await createBusiness(owner);
+    const base = `/api/businesses/${business.id}`;
+    const { customer } = (
+      await owner.post(`${base}/customers`, {
+        firstName: "Ana",
+        lastName: "Pérez",
+        phone: "+57 300 123 4567",
+      })
+    ).body;
+    const now = Date.now();
+    const [appointment] = await app.db
+      .insert(appointments)
+      .values({
+        code: "PAID01",
+        businessId: business.id,
+        customerId: customer.id,
+        startsAt: new Date(now),
+        endsAt: new Date(now + 30 * 60_000),
+        serviceName: "Corte",
+        priceAmount: 5_000,
+      })
+      .returning();
+    const today = todayIn("America/Bogota");
+    const paid = async () =>
+      (await owner.get(`${base}/reports/summary?from=${today}&to=${today}`)).body.today[0].paid;
+    const leave = (amount: number) =>
+      owner.post(`${base}/deposits`, {
+        customerId: customer.id,
+        appointmentId: appointment?.id,
+        amount,
+        method: "cash",
+      });
+
+    expect(await paid()).toBe(false);
+    await leave(2_000);
+    expect(await paid()).toBe(false);
+    await leave(3_000);
+    expect(await paid()).toBe(true);
   });
 });
