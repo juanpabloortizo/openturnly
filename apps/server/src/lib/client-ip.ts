@@ -74,7 +74,32 @@ export function hasProxyHeaders(c: Context): boolean {
  * server's own network, which outgoing webhooks must not reach unless the install allows it.
  */
 export function isInternalAddress(ip: string): boolean {
-  const address = (ip.split("%")[0] ?? ip).replace(/^::ffff:/i, "");
+  let address = (ip.split("%")[0] ?? ip).toLowerCase();
+  if (address.startsWith("::ffff:")) {
+    const rest = address.slice(7);
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(rest)) {
+      address = rest;
+    } else {
+      const parts = rest.split(":");
+      const p0 = parts[0];
+      const p1 = parts[1];
+      if (
+        parts.length === 2 &&
+        p0 &&
+        p1 &&
+        /^[0-9a-f]{1,4}$/.test(p0) &&
+        /^[0-9a-f]{1,4}$/.test(p1)
+      ) {
+        const high = parseInt(p0, 16);
+        const low = parseInt(p1, 16);
+        const b1 = (high >> 8) & 0xff;
+        const b2 = high & 0xff;
+        const b3 = (low >> 8) & 0xff;
+        const b4 = low & 0xff;
+        address = b1 + "." + b2 + "." + b3 + "." + b4;
+      }
+    }
+  }
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(address)) {
     return (
       INTERNAL_V4.test(address) ||

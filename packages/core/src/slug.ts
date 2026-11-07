@@ -38,10 +38,10 @@ const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export type SlugProblem = "too_short" | "too_long" | "invalid_characters" | "reserved";
 
 export function checkSlug(slug: string): SlugProblem | null {
+  if (RESERVED_SLUGS.has(slug)) return "reserved";
   if (slug.length < SLUG_MIN_LENGTH) return "too_short";
   if (slug.length > SLUG_MAX_LENGTH) return "too_long";
   if (!SLUG_PATTERN.test(slug)) return "invalid_characters";
-  if (RESERVED_SLUGS.has(slug)) return "reserved";
   return null;
 }
 
