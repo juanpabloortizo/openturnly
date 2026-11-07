@@ -1,4 +1,9 @@
-import type { CashMovementInput, CashMovementKind, PaymentMethod } from "@openturnly/core";
+import type {
+  CashMovementInput,
+  CashMovementKind,
+  MoneyMethod,
+  PaymentMethod,
+} from "@openturnly/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api.ts";
 
@@ -12,7 +17,7 @@ export type CashReport = {
     expenses: number;
     result: number;
   };
-  byMethod: Record<PaymentMethod, number>;
+  byMethod: Record<MoneyMethod, number>;
   /** Paid sales, with the money taken in each (not deposits or gift card balances). */
   sales: {
     id: string;

@@ -11,6 +11,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import {
   appointments,
+  BUSY_STATUSES,
   type Business,
   customers,
   deposits,
@@ -290,7 +291,7 @@ export function appointmentRoutes({ db, automations }: Deps) {
             .where(
               and(
                 eq(appointments.customerId, customerId),
-                eq(appointments.status, "confirmed"),
+                inArray(appointments.status, BUSY_STATUSES),
                 lt(appointments.startsAt, new Date(endsAt)),
                 gt(appointments.endsAt, new Date(startsAt)),
               ),
@@ -429,7 +430,7 @@ export function appointmentRoutes({ db, automations }: Deps) {
             .where(
               and(
                 eq(appointments.businessId, businessId),
-                eq(appointments.status, "confirmed"),
+                inArray(appointments.status, BUSY_STATUSES),
                 appointment.resourceId
                   ? eq(appointments.resourceId, appointment.resourceId)
                   : and(

@@ -51,6 +51,8 @@ export type Config = {
   email: EmailDefaults | null;
   /** Where WhatsApp's API lives, with its version. */
   whatsappApiUrl: string;
+  /** Where Mercado Pago's API lives. */
+  mercadopagoApiUrl: string;
   /**
    * Sent with every message and handed back in its delivery updates, so several installs
    * sharing one number can tell theirs apart.
@@ -62,6 +64,7 @@ const DEFAULT_DATA_DIR = fileURLToPath(new URL("../../../data", import.meta.url)
 const WEB_DIST_DIR = fileURLToPath(new URL("../../web/dist", import.meta.url));
 const VITE_DEV_ORIGIN = "http://localhost:5173";
 const WHATSAPP_API_URL = "https://graph.facebook.com/v25.0";
+const MERCADOPAGO_API_URL = "https://api.mercadopago.com";
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const isProduction = env.NODE_ENV === "production";
@@ -94,6 +97,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     email: loadEmailDefaults(env),
     whatsappApiUrl: (env.WHATSAPP_API_URL || WHATSAPP_API_URL).replace(/\/+$/, ""),
     whatsappCallbackTag: env.WHATSAPP_CALLBACK_TAG || null,
+    mercadopagoApiUrl: (env.MERCADOPAGO_API_URL || MERCADOPAGO_API_URL).replace(/\/+$/, ""),
   };
 }
 

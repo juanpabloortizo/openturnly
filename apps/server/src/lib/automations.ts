@@ -39,6 +39,7 @@ import {
 } from "../db/schema.ts";
 import { isInternalAddress } from "./client-ip.ts";
 import type { Email } from "./email.ts";
+import type { Payments } from "./payments.ts";
 import type { Whatsapp, WhatsappStatusUpdate, WhatsappVariable } from "./whatsapp.ts";
 
 /** Reminders and follow-ups that came due while the server was down still go out, up to this late. */
@@ -266,11 +267,14 @@ export function createAutomations({
   config,
   whatsapp,
   email,
+  payments,
 }: {
   db: Db;
   config: Config;
   whatsapp: Whatsapp;
   email: Email;
+  /** Open payments are caught up on every sweep, which frees times nobody paid for. */
+  payments?: Pick<Payments, "sweep">;
 }) {
   const loadAppointment = async (appointmentId: string) => {
     const [row] = await db
@@ -528,6 +532,7 @@ export function createAutomations({
 
     /** Queues reminders and follow-ups that have come due (each only once per time). */
     async sweep(now = Date.now()) {
+      await payments?.sweep(now);
       const timed = await db
         .select()
         .from(automations)

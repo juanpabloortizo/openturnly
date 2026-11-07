@@ -2,8 +2,10 @@ import {
   addDays,
   bookingDetailsSchema,
   bookingSchema,
+  instantToZoned,
   isDateString,
   parseTime,
+  paymentDueNow,
   slotsBetween,
   slotsForDate,
   todayIn,
@@ -13,10 +15,15 @@ import { and, asc, count, eq, gt, inArray, lt, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import {
+  type Appointment,
   appointments,
+  BUSY_STATUSES,
   type Business,
   businesses,
   locationServices,
+  locations,
+  type OnlinePayment,
+  onlinePayments,
   resourceLocations,
   resourcePhotos,
   resourceServices,
@@ -42,7 +49,7 @@ const MAX_ACTIVE_BOOKINGS_PER_CUSTOMER = 3;
 const giftCheckSchema = z.object({ code: z.string().min(1).max(40), serviceId: z.string().min(1) });
 
 /** Endpoints used by the public booking page. No login required. */
-export function publicRoutes({ db, config, guard, automations }: Deps) {
+export function publicRoutes({ db, config, guard, automations, payments }: Deps) {
   const network = (c: Context) => networkKey(clientIp(c, config.trustProxy));
 
   /**
@@ -102,10 +109,14 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
         category: services.category,
         durationMin: services.durationMin,
         priceAmount: services.priceAmount,
+        paymentMode: services.paymentMode,
+        depositAmount: services.depositAmount,
       })
       .from(services)
       .where(and(eq(services.businessId, business.id), eq(services.active, true)))
       .orderBy(asc(services.position), asc(services.name));
+    // Payment settings only mean something while the business can be paid here.
+    const accepting = await payments.accepting(business.id);
 
     const doing = (resourceId: string, serviceId: string) =>
       links.some((link) => link.resourceId === resourceId && link.serviceId === serviceId);
@@ -142,7 +153,9 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
     const photos = await photoUrls(db, business.slug, [...working]);
     return {
       locations: bookableLocations,
-      services: catalog.filter((service) => bookable.has(service.id)),
+      services: catalog
+        .filter((service) => bookable.has(service.id))
+        .map((service) => (accepting ? service : { ...service, paymentMode: "none" as const })),
       professionals: team
         .filter((member) => working.has(member.id))
         .map((member) => ({
@@ -168,6 +181,60 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
       );
     if (!service) throw apiError(404, "service_not_found");
     return service;
+  };
+
+  /** A booking as the customer sees it. */
+  const bookedView = (
+    appointment: Appointment,
+    business: Business,
+    location: { name: string | null; address: string | null },
+  ) => {
+    const { date, time } = instantToZoned(appointment.startsAt.getTime(), business.timezone);
+    return {
+      id: appointment.id,
+      code: appointment.code,
+      status: appointment.status,
+      date,
+      time,
+      startsAt: appointment.startsAt,
+      endsAt: appointment.endsAt,
+      serviceName: appointment.serviceName,
+      resourceName: appointment.resourceName,
+      priceAmount: appointment.priceAmount,
+      discountAmount: appointment.discountAmount,
+      currency: business.currency,
+      location,
+    };
+  };
+
+  /** A payment as the customer waiting for it sees it. */
+  const paymentState = async (business: Business, payment: OnlinePayment) => {
+    const [booked] = payment.appointmentId
+      ? await db
+          .select({
+            appointment: appointments,
+            location: { name: locations.name, address: locations.address },
+          })
+          .from(appointments)
+          .leftJoin(locations, eq(locations.id, appointments.locationId))
+          .where(eq(appointments.id, payment.appointmentId))
+      : [];
+    return {
+      payment: {
+        id: payment.id,
+        status: payment.status,
+        amount: payment.amount,
+        currency: payment.currency,
+        expiresAt: payment.expiresAt,
+        checkoutUrl: payment.status === "pending" ? payment.checkoutUrl : null,
+      },
+      appointment: booked
+        ? bookedView(booked.appointment, business, {
+            name: booked.location?.name ?? null,
+            address: booked.location?.address ?? null,
+          })
+        : null,
+    };
   };
 
   return (
@@ -346,17 +413,45 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
         const now = Date.now();
         const startsAt = zonedTimeToInstant(input.date, parseTime(input.time), business.timezone);
         const endsAt = startsAt + service.durationMin * 60_000;
+        // An AI agent books for the customer and has no way to send them to pay.
+        const takesPayment =
+          !key && service.paymentMode !== "none" && (await payments.accepting(business.id));
 
-        const appointment = await db.transaction(async (tx) => {
+        const dropped: OnlinePayment[] = [];
+        const { appointment, held, resumed } = await db.transaction(async (tx) => {
           // One booking at a time per business: the next one waits here and then sees
           // this appointment when it re-checks the slot, so a time can't be taken twice.
           await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${business.id}, 0))`);
 
           const match = await matchCustomer(tx, business.id, details);
+          if (match.customer && !key) {
+            // Coming back to a payment left open: the same booking picks it up again, and
+            // anything else replaces it, so nobody is kept out by their own unpaid time.
+            for (const open of await payments.heldBy(tx, match.customer.id)) {
+              const same =
+                open.appointment.serviceId === service.id &&
+                open.appointment.locationId === location.id &&
+                open.appointment.startsAt.getTime() === startsAt &&
+                (input.resourceId === null || open.appointment.resourceId === input.resourceId);
+              const owes = paymentDueNow(service, service.priceAmount ?? 0, input.payNow);
+              if (
+                same &&
+                takesPayment &&
+                !input.giftCode &&
+                open.payment.checkoutUrl &&
+                open.payment.amount === owes &&
+                open.payment.expiresAt.getTime() > now
+              ) {
+                return { appointment: open.appointment, held: open.payment, resumed: true };
+              }
+              const closed = await payments.replace(tx, open.payment);
+              if (closed) dropped.push(closed);
+            }
+          }
           if (match.customer) {
             const theirs = and(
               eq(appointments.customerId, match.customer.id),
-              eq(appointments.status, "confirmed"),
+              inArray(appointments.status, BUSY_STATUSES),
             );
             // The same person can't be in two places: say which booking they already have.
             const [clash] = await tx
@@ -418,6 +513,12 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
 
           const customerId = await saveBookingCustomer(tx, business.id, match, details);
 
+          const price = service.priceAmount ?? 0;
+          const discountAmount = gift ? discountFor(gift, price) : 0;
+          const due = takesPayment
+            ? paymentDueNow(service, price - discountAmount, input.payNow)
+            : 0;
+
           const [created] = await tx
             .insert(appointments)
             .values({
@@ -432,38 +533,85 @@ export function publicRoutes({ db, config, guard, automations }: Deps) {
               serviceName: service.name,
               resourceName: resource?.name ?? null,
               priceAmount: service.priceAmount,
-              discountAmount: gift ? discountFor(gift, service.priceAmount ?? 0) : 0,
+              discountAmount,
               giftCardId: gift?.id ?? null,
               answers,
               source: key ? "agent" : "online",
               sourceLabel: key?.name ?? null,
+              status: due > 0 ? "pending_payment" : "confirmed",
             })
             .returning();
           if (!created) throw apiError(500, "internal_error");
-          return created;
+          const payment =
+            due > 0
+              ? await payments.hold(tx, {
+                  business,
+                  appointmentId: created.id,
+                  amount: due,
+                  now,
+                })
+              : null;
+          return { appointment: created, held: payment, resumed: false };
         });
+        await payments.cancelOrders(dropped);
         if (!key) guard.noteBooking(business.id);
-        await automations.emit(appointment.id, "created");
-
-        return c.json(
-          {
-            appointment: {
-              id: appointment.id,
-              code: appointment.code,
-              date: input.date,
-              time: input.time,
-              startsAt: appointment.startsAt,
-              endsAt: appointment.endsAt,
-              serviceName: appointment.serviceName,
-              resourceName: appointment.resourceName,
-              priceAmount: appointment.priceAmount,
-              discountAmount: appointment.discountAmount,
-              currency: business.currency,
-              location: { name: location.name, address: location.address },
+        const view = bookedView(appointment, business, {
+          name: location.name,
+          address: location.address,
+        });
+        if (held) {
+          // Confirmed, and announced, only once it's paid.
+          const payment = resumed
+            ? held
+            : await payments.checkout(held, business, appointment.serviceName);
+          return c.json(
+            {
+              appointment: view,
+              payment: {
+                id: payment.id,
+                checkoutUrl: payment.checkoutUrl,
+                amount: payment.amount,
+              },
             },
-          },
-          201,
-        );
+            resumed ? 200 : 201,
+          );
+        }
+        await automations.emit(appointment.id, "created");
+        return c.json({ appointment: view, payment: null }, 201);
+      })
+
+      /** How a payment stands, for the page the customer comes back to from paying. */
+      .get("/businesses/:slug/payments/:paymentId", async (c) => {
+        const business = await findBusiness(c.req.param("slug"));
+        if (!guard.allow.availability(network(c))) throw apiError(429, "too_many_requests");
+        const [found] = await db
+          .select()
+          .from(onlinePayments)
+          .where(
+            and(
+              eq(onlinePayments.businessId, business.id),
+              eq(onlinePayments.id, c.req.param("paymentId")),
+            ),
+          );
+        if (!found) throw apiError(404, "payment_not_found");
+        return c.json(await paymentState(business, await payments.refresh(found)));
+      })
+
+      /** The customer doesn't want to pay after all: the time goes back straight away. */
+      .post("/businesses/:slug/payments/:paymentId/cancel", async (c) => {
+        const business = await findBusiness(c.req.param("slug"));
+        if (!guard.allow.availability(network(c))) throw apiError(429, "too_many_requests");
+        const [found] = await db
+          .select()
+          .from(onlinePayments)
+          .where(
+            and(
+              eq(onlinePayments.businessId, business.id),
+              eq(onlinePayments.id, c.req.param("paymentId")),
+            ),
+          );
+        if (!found) throw apiError(404, "payment_not_found");
+        return c.json(await paymentState(business, await payments.abandon(found)));
       })
   );
 }

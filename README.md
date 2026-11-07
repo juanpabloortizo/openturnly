@@ -127,6 +127,8 @@ updates, read the [self-hosting guide](docs/self-hosting.md), or follow the
   ([docs/whatsapp.md](docs/whatsapp.md)).
 - **Email reminders and confirmations** through any provider that takes SMTP
   ([docs/email.md](docs/email.md)).
+- **Online payments** at booking, a deposit or the full price, straight to the business's own
+  Mercado Pago account ([docs/payments.md](docs/payments.md)).
 - **Protection against fake bookings**: self-hosted proof of work (ALTCHA), rate limits and
   a surge brake per business. No third-party service needed.
 
@@ -138,8 +140,8 @@ Next on the list:
 
 - `.ics` files in confirmation emails, and cancel or reschedule links without an account.
 
-Not planned: online payments, marketing tools. Workflows and the MCP server let you connect
-those from other tools.
+Not planned: marketing tools. Workflows and the MCP server let you connect those from other
+tools.
 
 ## Tech stack
 

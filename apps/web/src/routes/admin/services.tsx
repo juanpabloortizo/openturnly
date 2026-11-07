@@ -1,6 +1,14 @@
-import { formatPrice, fromMinorUnits, serviceSchema, toMinorUnits } from "@openturnly/core";
+import {
+  formatPrice,
+  fromMinorUnits,
+  SERVICE_PAYMENT_MODES,
+  type ServicePaymentMode,
+  servicePaymentProblem,
+  serviceSchema,
+  toMinorUnits,
+} from "@openturnly/core";
 import { Pencil, Plus, Scissors } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, type InputHTMLAttributes, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Checklist } from "../../components/checklist.tsx";
 import { useConfirm } from "../../components/confirm.tsx";
@@ -21,7 +29,27 @@ import type { Service } from "../../lib/api.ts";
 import { useLocations, useServiceMutations, useServices } from "../../lib/catalog.ts";
 import { currencySymbol, formatDuration } from "../../lib/format.ts";
 import { errorMessage, type FieldErrors, fieldMessage, validate } from "../../lib/forms.ts";
+import { usePayments } from "../../lib/payments.ts";
 import { useBusinessContext } from "./business.tsx";
+
+/** A price in the business's currency. */
+function MoneyInput({
+  currency,
+  ...props
+}: { currency: string } & InputHTMLAttributes<HTMLInputElement>) {
+  const { i18n } = useTranslation();
+  return (
+    <div className="relative">
+      <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-zinc-400">
+        {currencySymbol(currency, i18n.resolvedLanguage ?? "es")}
+      </span>
+      <Input {...props} inputMode="decimal" placeholder="0" className="pr-12 pl-8 tabular-nums" />
+      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-medium text-zinc-400">
+        {currency}
+      </span>
+    </div>
+  );
+}
 
 export function ServicesPage() {
   const { t } = useTranslation();
@@ -169,11 +197,25 @@ function ServiceForm({ service, onClose }: { service: Service | null; onClose: (
       : "",
   );
   const [active, setActive] = useState(service?.active ?? true);
+  const payments = usePayments(business.id);
+  const [paymentMode, setPaymentMode] = useState<ServicePaymentMode>(
+    service?.paymentMode ?? "none",
+  );
+  const [deposit, setDeposit] = useState(
+    service?.depositAmount != null
+      ? String(fromMinorUnits(service.depositAmount, business.currency))
+      : "",
+  );
   const [errors, setErrors] = useState<FieldErrors>({});
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const amount = Number(price.replace(",", "."));
+    const depositNumber = Number(deposit.replace(",", "."));
+    const depositAmount =
+      paymentMode === "deposit" && deposit.trim() !== "" && !Number.isNaN(depositNumber)
+        ? toMinorUnits(depositNumber, business.currency)
+        : null;
     const values = {
       name,
       category,
@@ -184,12 +226,18 @@ function ServiceForm({ service, onClose }: { service: Service | null; onClose: (
         price.trim() === "" || Number.isNaN(amount)
           ? undefined
           : toMinorUnits(amount, business.currency),
+      paymentMode,
+      depositAmount,
       active,
       ...(locations.length > 1 ? { locationIds } : {}),
     };
     const result = validate(serviceSchema, values);
-    setErrors(result.errors ?? {});
-    if (!result.data) return;
+    const problem =
+      values.priceAmount === undefined
+        ? null
+        : servicePaymentProblem({ paymentMode, depositAmount }, values.priceAmount);
+    setErrors({ ...result.errors, ...(problem ? { depositAmount: problem } : {}) });
+    if (!result.data || problem) return;
     save.mutate(
       { id: service?.id, input: result.data },
       {
@@ -299,22 +347,12 @@ function ServiceForm({ service, onClose }: { service: Service | null; onClose: (
             error={fieldMessage(t, "priceAmount", errors.priceAmount)}
           >
             {(props) => (
-              <div className="relative">
-                <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-zinc-400">
-                  {currencySymbol(business.currency, i18n.resolvedLanguage ?? "es")}
-                </span>
-                <Input
-                  {...props}
-                  inputMode="decimal"
-                  placeholder="0"
-                  className="pr-12 pl-8 tabular-nums"
-                  value={price}
-                  onChange={(event) => setPrice(event.target.value.replace(/[^\d.,]/g, ""))}
-                />
-                <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-medium text-zinc-400">
-                  {business.currency}
-                </span>
-              </div>
+              <MoneyInput
+                {...props}
+                currency={business.currency}
+                value={price}
+                onChange={(event) => setPrice(event.target.value.replace(/[^\d.,]/g, ""))}
+              />
             )}
           </Field>
         </div>
@@ -343,6 +381,51 @@ function ServiceForm({ service, onClose }: { service: Service | null; onClose: (
             />
           </fieldset>
         )}
+        <div className="space-y-4 border-t border-zinc-100 pt-4">
+          <Field
+            label={t("services.paymentLabel")}
+            hint={
+              payments.data?.connection
+                ? t(`services.paymentHints.${paymentMode}`)
+                : t("services.paymentConnectFirst")
+            }
+            error={
+              paymentMode === "deposit"
+                ? undefined
+                : fieldMessage(t, "depositAmount", errors.depositAmount)
+            }
+          >
+            {(props) => (
+              <Select
+                {...props}
+                disabled={!payments.data?.connection}
+                value={paymentMode}
+                onChange={(event) => setPaymentMode(event.target.value as ServicePaymentMode)}
+              >
+                {SERVICE_PAYMENT_MODES.map((mode) => (
+                  <option key={mode} value={mode}>
+                    {t(`services.paymentModes.${mode}`)}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          {paymentMode === "deposit" && (
+            <Field
+              label={t("services.depositLabel")}
+              error={fieldMessage(t, "depositAmount", errors.depositAmount)}
+            >
+              {(props) => (
+                <MoneyInput
+                  {...props}
+                  currency={business.currency}
+                  value={deposit}
+                  onChange={(event) => setDeposit(event.target.value.replace(/[^\d.,]/g, ""))}
+                />
+              )}
+            </Field>
+          )}
+        </div>
         <div className="border-t border-zinc-100 pt-4">
           <Switch
             checked={active}

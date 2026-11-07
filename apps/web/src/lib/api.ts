@@ -7,12 +7,13 @@ import type {
   CommissionType,
   Gender,
   GiftCardKind,
+  MoneyMethod,
   PageTheme,
-  PaymentMethod,
   ProductAttributeKind,
   ProductUnit,
   SaleItemKind,
   SalePaymentMethod,
+  ServicePaymentMode,
   StockMovementKind,
 } from "@openturnly/core";
 
@@ -105,7 +106,7 @@ export type HolidaySettings = {
 };
 
 /** "no_show": the customer didn't come; it frees the time it had. */
-export type AppointmentStatus = "confirmed" | "cancelled" | "no_show";
+export type AppointmentStatus = "confirmed" | "cancelled" | "no_show" | "pending_payment";
 
 export type Service = {
   id: string;
@@ -115,6 +116,10 @@ export type Service = {
   category: string | null;
   durationMin: number;
   priceAmount: number | null;
+  /** What the booking page asks for online; always "none" until payments are connected. */
+  paymentMode: ServicePaymentMode;
+  /** With `paymentMode` "deposit": how much. */
+  depositAmount: number | null;
   active: boolean;
   /** Locations that offer it. */
   locationIds: string[];
@@ -243,6 +248,7 @@ export type BookedAppointment = {
   id: string;
   /** Short code the customer can quote, e.g. "K7Q4XM". */
   code: string;
+  status: AppointmentStatus;
   date: string;
   time: string;
   startsAt: string;
@@ -253,6 +259,51 @@ export type BookedAppointment = {
   discountAmount: number;
   currency: string;
   location: { name: string; address: string | null };
+};
+
+/** What booking returns: `payment` is set when the customer has to pay to confirm it. */
+export type BookingResult = {
+  appointment: BookedAppointment;
+  payment: { id: string; checkoutUrl: string | null; amount: number } | null;
+};
+
+/** How a payment stands, for the page waiting for it. */
+export type PaymentState = {
+  payment: {
+    id: string;
+    status: "pending" | "paid" | "failed" | "cancelled" | "abandoned" | "refunding" | "refunded";
+    amount: number;
+    currency: string;
+    expiresAt: string;
+    /** To go back to paying, while it can still be paid. */
+    checkoutUrl: string | null;
+  };
+  appointment: BookedAppointment | null;
+};
+
+/** Settings → Payments: the business's Mercado Pago account, never its token. */
+export type PaymentOverview = {
+  connection: {
+    accountId: string;
+    accountName: string | null;
+    siteId: string;
+    /** A test account: no real money moves. */
+    testMode: boolean;
+    updatedAt: string;
+  } | null;
+  /** Where Mercado Pago can send its notifications. */
+  webhookUrl: string;
+  /** Payments that came too late to keep their time, sent back to the customer. */
+  refunds: {
+    id: string;
+    amount: number;
+    currency: string;
+    status: "refunding" | "refunded";
+    refundedAt: string | null;
+    code: string | null;
+    firstName: string | null;
+    lastName: string | null;
+  }[];
 };
 
 export type Sale = {
@@ -383,7 +434,7 @@ export type GiftCard = {
 export type Deposit = {
   id: string;
   amount: number;
-  method: PaymentMethod;
+  method: MoneyMethod;
   note: string | null;
   status: "active" | "void";
   createdAt: string;

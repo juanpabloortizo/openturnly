@@ -5,6 +5,7 @@ import {
   formatPrice,
   fromMinorUnits,
   instantToZoned,
+  MONEY_METHODS,
   PAYMENT_METHODS,
   type PaymentMethod,
   todayIn,
@@ -119,7 +120,7 @@ export function CashPage() {
     add([t("cash.flows.result"), units(data.flows.result)], true);
     add([]);
     add([t("cash.methodsTitle"), amountHeader], true);
-    for (const method of PAYMENT_METHODS)
+    for (const method of MONEY_METHODS)
       add([t(`payments.${method}`), units(data.byMethod[method])]);
     add([]);
     add([t("cash.summary.drawerToday"), units(data.cashInDrawer)], true);
@@ -298,7 +299,7 @@ export function CashPage() {
               <h2 className="text-sm font-semibold text-zinc-900">{t("cash.methodsTitle")}</h2>
               <p className="mt-0.5 text-[13px] text-zinc-500">{t("cash.methodsHint")}</p>
               <ul className="mt-3">
-                {PAYMENT_METHODS.map((method) => (
+                {MONEY_METHODS.map((method) => (
                   <li
                     key={method}
                     className="flex items-center justify-between gap-3 px-2.5 py-1.5 text-sm"
