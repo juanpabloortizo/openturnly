@@ -83,6 +83,23 @@ export function PaymentsTab() {
         ) : (
           <form onSubmit={submit} noValidate className="space-y-4">
             {connect.isError && <Alert>{errorMessage(t, connect.error)}</Alert>}
+            <div className="rounded-lg bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+              <p className="font-medium text-zinc-900">{t("paymentSettings.guideTitle")}</p>
+              <ol className="mt-1.5 list-decimal space-y-1 pl-4">
+                <li>{t("paymentSettings.guideStep1")}</li>
+                <li>{t("paymentSettings.guideStep2")}</li>
+                <li>{t("paymentSettings.guideStep3")}</li>
+                <li>{t("paymentSettings.guideStep4")}</li>
+              </ol>
+              <a
+                href="https://www.mercadopago.com/developers/panel/app"
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-block font-medium text-brand-700 hover:underline"
+              >
+                {t("paymentSettings.guideLink")}
+              </a>
+            </div>
             <Field
               label={t("paymentSettings.token")}
               hint={t("paymentSettings.tokenHint")}

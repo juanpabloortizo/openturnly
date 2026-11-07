@@ -129,7 +129,12 @@ export function businessRoutes({ db, config, auth, guard }: Deps) {
         );
         if (access.role === "professional") throw apiError(403, "forbidden");
         const input = await parseBody(c, businessUpdateSchema);
-        if (input.slug && input.slug !== current.slug) await assertSlugAvailable(db, input.slug);
+        if (input.slug && input.slug !== current.slug) {
+          // The booking page, its QR codes, embeds and MCP clients all point at the slug. The
+          // sample isn't shared with anyone, so it can still change.
+          if (!current.sample) throw apiError(409, "slug_locked");
+          await assertSlugAvailable(db, input.slug);
+        }
         const business = await db.transaction(async (tx) => {
           // Per-holiday exceptions are relative to the global switch, so they reset with it.
           const switchedHolidays =

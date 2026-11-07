@@ -12,6 +12,7 @@ export const WHATSAPP_VARIABLE_DATA: Record<string, string> = {
   business_name: "{{business.name}}",
   appointment_date: "{{appointment.date_text}}",
   appointment_time: "{{appointment.time_text}}",
+  booking_code: "{{appointment.code}}",
   business_address: "{{appointment.location_address}}",
   business_phone: "{{business.phone}}",
 };
@@ -23,6 +24,7 @@ export const WHATSAPP_VARIABLE_EXAMPLES: Record<WhatsappLanguage, Record<string,
     business_name: "Barbería Central",
     appointment_date: "jueves, 12 de noviembre",
     appointment_time: "10:00 a. m.",
+    booking_code: "7K2M9P",
     business_address: "Calle 10 # 20-30",
     business_phone: "+573001234567",
   },
@@ -31,6 +33,7 @@ export const WHATSAPP_VARIABLE_EXAMPLES: Record<WhatsappLanguage, Record<string,
     business_name: "Central Barbershop",
     appointment_date: "Thursday, November 12",
     appointment_time: "10:00 AM",
+    booking_code: "7K2M9P",
     business_address: "10 Main Street",
     business_phone: "+13055550100",
   },
@@ -43,8 +46,8 @@ export type WhatsappTemplateDefinition = {
 };
 
 const DETAILS = {
-  es: "📅 Fecha: {{appointment_date}}\n🕙 Hora: {{appointment_time}}",
-  en: "📅 Date: {{appointment_date}}\n🕙 Time: {{appointment_time}}",
+  es: "📅 Fecha: {{appointment_date}}\n🕙 Hora: {{appointment_time}}\n🔖 Código de reserva: {{booking_code}}",
+  en: "📅 Date: {{appointment_date}}\n🕙 Time: {{appointment_time}}\n🔖 Booking code: {{booking_code}}",
 };
 const ADDRESS = {
   es: "📍 Dirección: {{business_address}}",
@@ -58,7 +61,7 @@ const QUESTIONS = {
 
 export const WHATSAPP_TEMPLATES: readonly WhatsappTemplateDefinition[] = [
   {
-    name: "appointment_confirmation",
+    name: "confirmacion_cita",
     header: { es: "Cita confirmada", en: "Appointment confirmed" },
     body: {
       es: `Hola {{customer_name}}, tu cita en {{business_name}} ya está agendada.\n\n${DETAILS.es}\n${ADDRESS.es}\n\n${QUESTIONS.es}`,
@@ -66,7 +69,7 @@ export const WHATSAPP_TEMPLATES: readonly WhatsappTemplateDefinition[] = [
     },
   },
   {
-    name: "appointment_reminder",
+    name: "recordatorio_cita",
     header: { es: "Recordatorio de cita", en: "Appointment reminder" },
     body: {
       es: `Hola {{customer_name}}, te esperamos en {{business_name}}.\n\n${DETAILS.es}\n${ADDRESS.es}\n\n${QUESTIONS.es}`,
@@ -74,7 +77,7 @@ export const WHATSAPP_TEMPLATES: readonly WhatsappTemplateDefinition[] = [
     },
   },
   {
-    name: "appointment_rescheduled",
+    name: "cita_reprogramada",
     header: { es: "Tu cita cambió", en: "Your appointment changed" },
     body: {
       es: `Hola {{customer_name}}, tu cita en {{business_name}} tiene un nuevo horario.\n\n${DETAILS.es}\n${ADDRESS.es}\n\n${QUESTIONS.es}`,
@@ -82,7 +85,7 @@ export const WHATSAPP_TEMPLATES: readonly WhatsappTemplateDefinition[] = [
     },
   },
   {
-    name: "appointment_cancelled",
+    name: "cita_cancelada",
     header: { es: "Cita cancelada", en: "Appointment cancelled" },
     body: {
       es: `Hola {{customer_name}}, tu cita en {{business_name}} fue cancelada.\n\n${DETAILS.es}\n\n${QUESTIONS.es}`,
